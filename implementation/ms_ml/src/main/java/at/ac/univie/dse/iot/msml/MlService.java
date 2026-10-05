@@ -14,6 +14,9 @@ import at.ac.univie.dse.iot.msml.jobs.WorkerPool;
 import at.ac.univie.dse.iot.msml.prediction.HistogramPredictor;
 import at.ac.univie.dse.iot.msml.rmi.MlRemoteServiceImpl;
 import at.ac.univie.dse.iot.msml.rmi.MlRmiServer;
+import at.ac.univie.dse.iot.msml.storage.Database;
+import at.ac.univie.dse.iot.msml.storage.JpaResultRepository;
+import at.ac.univie.dse.iot.msml.storage.ResultRecorder;
 import at.ac.univie.dse.iot.mlapi.ServiceStatusDto;
 import java.time.Clock;
 import java.time.Duration;
@@ -44,6 +47,8 @@ public final class MlService extends AbstractMicroService<MlConfig> {
     private FogClient fogClient;
     private MlRmiServer rmiServer;
     private ScheduledExecutorService timer;
+    private Database database;
+    private ResultRecorder recorder;
 
     public MlService() {
         this(Clock.systemUTC());
@@ -60,6 +65,11 @@ public final class MlService extends AbstractMicroService<MlConfig> {
         startedAt = clock.instant();
         store = new TimeSeriesStore(Duration.ofSeconds(config.timeSeriesRetentionSeconds()));
         events = new EventLog(config.events().retention(), clock);
+        database = Database.open(config.storage());
+        recorder = new ResultRecorder(config.serviceId(), events.epoch(), new JpaResultRepository(database),
+                config.storage().recorderQueueCapacity(), clock,
+                new NamedThreadFactory(config.serviceId() + "-recorder", true));
+        events.addListener(recorder);
         predictor = new HistogramPredictor(config.prediction().histograms());
         AnomalyDetector detector = new AnomalyDetector(config.anomaly().chains(),
                 config.anomaly().minSamplesPerPhase(), store);
@@ -71,13 +81,15 @@ public final class MlService extends AbstractMicroService<MlConfig> {
                 (fogId, aggregate, receivedAt) -> jobs.submitIngest(aggregate, receivedAt), clock);
         rmiServer = new MlRmiServer(config.rmi(),
                 new MlRemoteServiceImpl(events, predictor, this::status));
-        log.info("{} subscribes to {} fogs, {} behaviour chains, {} histograms, {} workers (epoch {})",
+        log.info("{} subscribes to {} fogs, {} behaviour chains, {} histograms, {} workers (epoch {}), stores results in {}",
                 config.serviceId(), config.fogNodes().size(), config.anomaly().chains().size(),
-                config.prediction().histograms().size(), config.workers().threads(), events.epoch());
+                config.prediction().histograms().size(), config.workers().threads(), events.epoch(),
+                database.jdbcUrl());
     }
 
     @Override
     protected void startComponents() throws Exception {
+        recorder.start();
         workers.start();
         timer = Executors.newSingleThreadScheduledExecutor(new NamedThreadFactory(config().serviceId() + "-timer", true));
         timer.scheduleWithFixedDelay(jobs::submitExpectationCheck,
@@ -99,6 +111,12 @@ public final class MlService extends AbstractMicroService<MlConfig> {
         }
         if (workers != null) {
             workers.stop(Duration.ofSeconds(2));
+        }
+        if (recorder != null) {
+            recorder.stop(Duration.ofSeconds(5));
+        }
+        if (database != null) {
+            database.close();
         }
     }
 

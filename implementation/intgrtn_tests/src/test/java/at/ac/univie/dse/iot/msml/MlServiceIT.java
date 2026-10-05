@@ -20,6 +20,7 @@ import at.ac.univie.dse.iot.testsupport.Waiting;
 import java.rmi.registry.LocateRegistry;
 import java.time.Duration;
 import java.util.List;
+import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -64,9 +65,11 @@ class MlServiceIT {
                     { "dataType": "temperature", "binWidth": 1.0, "maxSamples": 20 },
                     { "dataType": "co2", "binWidth": 50, "maxSamples": 20 }
                   ] },
-                  "rmi": { "hostname": "127.0.0.1", "registryPort": %d, "bindName": "MlService" }
+                  "rmi": { "hostname": "127.0.0.1", "registryPort": %d, "bindName": "MlService" },
+                  "storage": { "jdbcUrl": "jdbc:h2:mem:ml-it-%s;DB_CLOSE_DELAY=-1" }
                 }
-                """.formatted(temperatureFog.port(), co2Fog.port(), Ports.freeUdpPort(), registryPort), MlConfig.class, "ml-test");
+                """.formatted(temperatureFog.port(), co2Fog.port(), Ports.freeUdpPort(), registryPort, UUID.randomUUID()),
+                MlConfig.class, "ml-test");
         ml = new MlService();
         ml.start(config);
         client = (MlRemoteService) LocateRegistry.getRegistry("127.0.0.1", registryPort).lookup("MlService");

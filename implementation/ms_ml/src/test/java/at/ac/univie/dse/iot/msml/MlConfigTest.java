@@ -9,6 +9,7 @@ import at.ac.univie.dse.iot.common.config.ConfigLoader;
 import at.ac.univie.dse.iot.common.model.DataType;
 import at.ac.univie.dse.iot.msml.anomaly.BehaviourChain;
 import java.nio.file.Path;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 class MlConfigTest {
@@ -25,6 +26,7 @@ class MlConfigTest {
         assertEquals(1099, config.rmi().registryPort());
         assertEquals(50302, config.rmi().objectPort());
         assertEquals("MlService", config.rmi().bindName());
+        assertEquals("jdbc:h2:file:./run/data/ml-1", config.storage().jdbcUrl());
         BehaviourChain ventilation = config.anomaly().chains().get(2);
         assertTrue(ventilation.involves(DataType.of("co2")) && ventilation.involves(DataType.of("temperature")),
                 "one chain spans two data types");
@@ -43,6 +45,35 @@ class MlConfigTest {
         assertEquals("127.0.0.1", config.rmi().hostname());
         assertEquals(2, config.anomaly().minSamplesPerPhase());
         assertEquals(500, config.prediction().histograms().get(0).maxSamples());
+    }
+
+    @Test
+    void storageDefaultsToAFileDatabaseNamedAfterTheService() {
+        MlConfig config = loader.parse(minimal(""), MlConfig.class, "ml.json");
+
+        assertEquals("jdbc:h2:file:./run/data/ml-x", config.storage().jdbcUrl());
+        assertEquals("sa", config.storage().user());
+        assertEquals(10_000, config.storage().recorderQueueCapacity());
+        assertEquals(5, config.storage().poolSize());
+    }
+
+    @Test
+    void storageCanBeConfigured() {
+        MlConfig config = loader.parse(minimal("\"storage\": { \"jdbcUrl\": \"jdbc:h2:mem:x\", \"poolSize\": 2 },"),
+                MlConfig.class, "ml.json");
+
+        assertEquals("jdbc:h2:mem:x", config.storage().jdbcUrl());
+        assertEquals(2, config.storage().poolSize());
+    }
+
+    @Test
+    void invalidStorageIsReported() {
+        ConfigException e = assertThrows(ConfigException.class, () -> loader.parse(
+                minimal("\"storage\": { \"jdbcUrl\": \"h2:mem:x\", \"recorderQueueCapacity\": -1 },"),
+                MlConfig.class, "ml.json"));
+
+        assertEquals(List.of("storage.jdbcUrl must start with jdbc:", "storage.recorderQueueCapacity must be > 0"),
+                e.problems());
     }
 
     @Test

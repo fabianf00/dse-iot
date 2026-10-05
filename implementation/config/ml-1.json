@@ -40,5 +40,6 @@
     ]
   },
   "events": { "retention": 10000 },
-  "rmi": { "hostname": "127.0.0.1", "registryPort": 1099, "objectPort": 50302, "bindName": "MlService" }
+  "rmi": { "hostname": "127.0.0.1", "registryPort": 1099, "objectPort": 50302, "bindName": "MlService" },
+  "storage": { "jdbcUrl": "jdbc:h2:file:./run/data/ml-1" }
 }

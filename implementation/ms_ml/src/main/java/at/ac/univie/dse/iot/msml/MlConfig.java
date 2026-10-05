@@ -9,6 +9,7 @@ import at.ac.univie.dse.iot.msml.ingest.FogEndpoint;
 import at.ac.univie.dse.iot.msml.jobs.WorkerConfig;
 import at.ac.univie.dse.iot.msml.prediction.PredictionConfig;
 import at.ac.univie.dse.iot.msml.rmi.RmiConfig;
+import at.ac.univie.dse.iot.msml.storage.StorageConfig;
 import java.util.List;
 
 /**
@@ -24,6 +25,8 @@ import java.util.List;
  * @param prediction                 histograms
  * @param events                     event log settings, optional
  * @param rmi                        RMI endpoint, optional
+ * @param storage                    database of the historic results, optional; by default an H2
+ *                                   file under {@code run/data/<serviceId>}
  */
 public record MlConfig(
         String serviceId,
@@ -34,7 +37,8 @@ public record MlConfig(
         AnomalyConfig anomaly,
         PredictionConfig prediction,
         EventsConfig events,
-        RmiConfig rmi) implements ServiceConfig {
+        RmiConfig rmi,
+        StorageConfig storage) implements ServiceConfig {
 
     public static final long DEFAULT_TIME_SERIES_RETENTION_SECONDS = 3_600;
 
@@ -45,6 +49,7 @@ public record MlConfig(
                 ? DEFAULT_TIME_SERIES_RETENTION_SECONDS : timeSeriesRetentionSeconds;
         events = events == null ? new EventsConfig(0) : events;
         rmi = rmi == null ? new RmiConfig(null, 0, 0, null) : rmi;
+        storage = storage == null ? StorageConfig.defaultFor(serviceId) : storage.withDefaultUrl(serviceId);
     }
 
     @Override
@@ -61,7 +66,8 @@ public record MlConfig(
                 .nested("anomaly", anomaly)
                 .nested("prediction", prediction)
                 .nested("events", events)
-                .nested("rmi", rmi);
+                .nested("rmi", rmi)
+                .nested("storage", storage);
         if (anomaly != null && anomaly.chains() != null && !validator.hasProblems()) {
             validator.check(timeSeriesRetentionSeconds >= anomaly.maxSpanSeconds(), "timeSeriesRetentionSeconds",
                     "must cover the longest behaviour chain (" + anomaly.maxSpanSeconds() + " s)");

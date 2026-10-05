@@ -12,6 +12,13 @@ import at.ac.univie.dse.iot.msml.prediction.PredictionChange;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 
 class EventLogTest {
@@ -95,5 +102,67 @@ class EventLogTest {
     @Test
     void retentionMustBePositive() {
         assertThrows(IllegalArgumentException.class, () -> new EventLog(0, CLOCK));
+    }
+
+    @Test
+    void listenersGetEveryEventOnceInOrder() {
+        EventLog log = new EventLog(10, CLOCK);
+        List<Long> seen = new CopyOnWriteArrayList<>();
+        log.addListener(event -> seen.add(event.sequence()));
+
+        log.append(change(0));
+        log.append(change(50));
+
+        assertEquals(List.of(1L, 2L), seen);
+    }
+
+    @Test
+    void failingListenerDoesNotBreakAppendingOrOtherListeners() {
+        EventLog log = new EventLog(10, CLOCK);
+        List<Long> seen = new CopyOnWriteArrayList<>();
+        log.addListener(event -> {
+            throw new IllegalStateException("broken listener");
+        });
+        log.addListener(event -> seen.add(event.sequence()));
+
+        assertEquals(1, log.append(change(0)).sequence());
+        assertEquals(List.of(1L), seen);
+        assertEquals(1, log.lastSequence());
+    }
+
+    @Test
+    void listenersRunOutsideTheLock() throws Exception {
+        EventLog log = new EventLog(10, CLOCK);
+        CountDownLatch release = new CountDownLatch(1);
+        log.addListener(event -> {
+            if (event.sequence() == 1) {
+                await(release);
+            }
+        });
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        try {
+            Future<?> slow = executor.submit(() -> log.append(change(0)));
+            while (log.lastSequence() < 1) {
+                Thread.onSpinWait();
+            }
+
+            // The first append's listener is still blocked, yet another append and a read go through.
+            assertEquals(2, log.append(change(50)).sequence());
+            assertEquals(2, log.since(0, 10).events().size());
+
+            release.countDown();
+            slow.get(5, TimeUnit.SECONDS);
+        } finally {
+            release.countDown();
+            executor.shutdownNow();
+        }
+    }
+
+    private static void await(CountDownLatch latch) {
+        try {
+            latch.await(5, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
 }

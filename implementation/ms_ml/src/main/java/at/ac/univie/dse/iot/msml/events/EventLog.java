@@ -7,6 +7,10 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.function.Consumer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Append-only log of anomalies and prediction changes, read by polling clients.
@@ -15,8 +19,13 @@ import java.util.List;
  * sequence it saw; it needs no clock and cannot miss events, unless it falls behind the retention
  * limit, which the answer then reports. The {@link #epoch()} identifies this log instance, so
  * clients notice a restart (sequences start at 1 again).
+ *
+ * <p>Listeners (e.g. the recorder that stores events in the database) get every appended event
+ * once, after the append and outside the log's lock, so a slow listener never blocks other writers.
  */
 public final class EventLog {
+
+    private static final Logger LOG = LoggerFactory.getLogger(EventLog.class);
 
     /** A page of events after a cursor. */
     public record Page(List<MlEvent> events, long nextCursor, boolean truncated, boolean hasMore) {
@@ -26,6 +35,7 @@ public final class EventLog {
     private final Clock clock;
     private final long epoch;
     private final Deque<MlEvent> events = new ArrayDeque<>();
+    private final List<Consumer<MlEvent>> listeners = new CopyOnWriteArrayList<>();
     private long lastSequence;
 
     public EventLog(int retention, Clock clock) {
@@ -37,12 +47,27 @@ public final class EventLog {
         this.epoch = clock.millis();
     }
 
-    public synchronized MlEvent.AnomalyEvent append(Anomaly anomaly) {
-        return add(new MlEvent.AnomalyEvent(++lastSequence, clock.instant(), anomaly));
+    /** Registers a listener for every event appended from now on. It must not block for long. */
+    public void addListener(Consumer<MlEvent> listener) {
+        listeners.add(listener);
     }
 
-    public synchronized MlEvent.PredictionChangedEvent append(PredictionChange change) {
-        return add(new MlEvent.PredictionChangedEvent(++lastSequence, clock.instant(), change));
+    public MlEvent.AnomalyEvent append(Anomaly anomaly) {
+        MlEvent.AnomalyEvent event;
+        synchronized (this) {
+            event = add(new MlEvent.AnomalyEvent(++lastSequence, clock.instant(), anomaly));
+        }
+        notifyListeners(event);
+        return event;
+    }
+
+    public MlEvent.PredictionChangedEvent append(PredictionChange change) {
+        MlEvent.PredictionChangedEvent event;
+        synchronized (this) {
+            event = add(new MlEvent.PredictionChangedEvent(++lastSequence, clock.instant(), change));
+        }
+        notifyListeners(event);
+        return event;
     }
 
     /**
@@ -74,6 +99,16 @@ public final class EventLog {
     /** Creation time of this log in epoch milliseconds; identifies the service instance. */
     public long epoch() {
         return epoch;
+    }
+
+    private void notifyListeners(MlEvent event) {
+        for (Consumer<MlEvent> listener : listeners) {
+            try {
+                listener.accept(event);
+            } catch (RuntimeException e) {
+                LOG.error("Event listener failed on event {}", event.sequence(), e);
+            }
+        }
     }
 
     private <E extends MlEvent> E add(E event) {
