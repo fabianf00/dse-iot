@@ -1,0 +1,29 @@
+{
+  "serviceId": "iot-co2-3",
+  "sensor": {
+    "dataType": "co2",
+    "unit": "PPM",
+    "publishIntervalMs": 2000,
+    "generator": {
+      "kind": "RANDOM_WALK",
+      "base": 470.0,
+      "stepStdDev": 8.0,
+      "meanReversion": 0.05,
+      "seed": 203,
+      "min": 380.0,
+      "max": 5000.0
+    }
+  },
+  "cf": {
+    "listenPort": 50113,
+    "scan": {
+      "hosts": [
+        "127.0.0.1"
+      ],
+      "portRange": {
+        "from": 50100,
+        "to": 50129
+      }
+    }
+  }
+}

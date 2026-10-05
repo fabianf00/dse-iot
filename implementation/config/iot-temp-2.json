@@ -1,0 +1,31 @@
+{
+  "serviceId": "iot-temp-2",
+  "sensor": {
+    "dataType": "temperature",
+    "unit": "CELSIUS",
+    "publishIntervalMs": 1000,
+    "generator": {
+      "kind": "SINE",
+      "base": 22.5,
+      "amplitude": 1.5,
+      "periodSeconds": 600,
+      "phaseSeconds": 150,
+      "noiseStdDev": 0.2,
+      "seed": 102,
+      "min": -20.0,
+      "max": 50.0
+    }
+  },
+  "cf": {
+    "listenPort": 50102,
+    "scan": {
+      "hosts": [
+        "127.0.0.1"
+      ],
+      "portRange": {
+        "from": 50100,
+        "to": 50129
+      }
+    }
+  }
+}

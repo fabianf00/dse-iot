@@ -1,0 +1,37 @@
+{
+  "serviceId": "iot-co2-1",
+  "sensor": {
+    "dataType": "co2",
+    "unit": "PPM",
+    "publishIntervalMs": 1000,
+    "generator": {
+      "kind": "SINE",
+      "base": 500.0,
+      "amplitude": 60.0,
+      "periodSeconds": 900,
+      "phaseSeconds": 0,
+      "noiseStdDev": 10.0,
+      "seed": 201,
+      "min": 380.0,
+      "max": 5000.0
+    },
+    "anomalyInjection": {
+      "enabled": true,
+      "probabilityPerReading": 0.0015,
+      "offset": 900.0,
+      "durationSeconds": 90
+    }
+  },
+  "cf": {
+    "listenPort": 50111,
+    "scan": {
+      "hosts": [
+        "127.0.0.1"
+      ],
+      "portRange": {
+        "from": 50100,
+        "to": 50129
+      }
+    }
+  }
+}

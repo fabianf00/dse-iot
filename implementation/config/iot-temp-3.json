@@ -1,0 +1,29 @@
+{
+  "serviceId": "iot-temp-3",
+  "sensor": {
+    "dataType": "temperature",
+    "unit": "CELSIUS",
+    "publishIntervalMs": 2000,
+    "generator": {
+      "kind": "RANDOM_WALK",
+      "base": 23.0,
+      "stepStdDev": 0.15,
+      "meanReversion": 0.05,
+      "seed": 103,
+      "min": 15.0,
+      "max": 35.0
+    }
+  },
+  "cf": {
+    "listenPort": 50103,
+    "scan": {
+      "hosts": [
+        "127.0.0.1"
+      ],
+      "portRange": {
+        "from": 50100,
+        "to": 50129
+      }
+    }
+  }
+}
