@@ -20,6 +20,9 @@
         <module>ml_api</module>
         <module>ms_ml</module>
         <module>clnt_ml</module>
+        <module>web_ml</module>
+        <module>test_support</module>
+        <module>intgrtn_tests</module>
     </modules>
 
     <properties>
@@ -33,9 +36,13 @@
         <junit.version>5.14.4</junit.version>
         <mockito.version>5.24.0</mockito.version>
         <awaitility.version>4.3.0</awaitility.version>
+        <hibernate.version>7.4.12.Final</hibernate.version>
+        <h2.version>2.5.252</h2.version>
+        <javalin.version>7.2.3</javalin.version>
 
         <compiler-plugin.version>3.16.0</compiler-plugin.version>
         <surefire-plugin.version>3.5.6</surefire-plugin.version>
+        <failsafe-plugin.version>3.5.6</failsafe-plugin.version>
         <jar-plugin.version>3.5.0</jar-plugin.version>
         <shade-plugin.version>3.6.2</shade-plugin.version>
         <enforcer-plugin.version>3.6.2</enforcer-plugin.version>
@@ -59,6 +66,36 @@
                 <artifactId>ml_api</artifactId>
                 <version>${project.version}</version>
             </dependency>
+            <dependency>
+                <groupId>at.ac.univie.dse.iot</groupId>
+                <artifactId>ms_iot</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>at.ac.univie.dse.iot</groupId>
+                <artifactId>ms_fog</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>at.ac.univie.dse.iot</groupId>
+                <artifactId>ms_ml</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>at.ac.univie.dse.iot</groupId>
+                <artifactId>clnt_ml</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>at.ac.univie.dse.iot</groupId>
+                <artifactId>web_ml</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>at.ac.univie.dse.iot</groupId>
+                <artifactId>test_support</artifactId>
+                <version>${project.version}</version>
+            </dependency>
 
             <!-- Third party -->
             <dependency>
@@ -74,6 +111,21 @@
                 <version>${junit.version}</version>
                 <type>pom</type>
                 <scope>import</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.hibernate.orm</groupId>
+                <artifactId>hibernate-core</artifactId>
+                <version>${hibernate.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.h2database</groupId>
+                <artifactId>h2</artifactId>
+                <version>${h2.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.javalin</groupId>
+                <artifactId>javalin</artifactId>
+                <version>${javalin.version}</version>
             </dependency>
             <dependency>
                 <groupId>org.slf4j</groupId>
@@ -137,6 +189,20 @@
                     <artifactId>maven-surefire-plugin</artifactId>
                     <version>${surefire-plugin.version}</version>
                 </plugin>
+                <!-- Runs *IT classes in the integration-test phase; used by intgrtn_tests. -->
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-failsafe-plugin</artifactId>
+                    <version>${failsafe-plugin.version}</version>
+                    <executions>
+                        <execution>
+                            <goals>
+                                <goal>integration-test</goal>
+                                <goal>verify</goal>
+                            </goals>
+                        </execution>
+                    </executions>
+                </plugin>
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-jar-plugin</artifactId>
@@ -154,6 +220,10 @@
                                 <goal>shade</goal>
                             </goals>
                             <configuration>
+                                <!-- The fat JAR is a separate file (target/<module>.jar); the module's
+                                     normal artifact stays a plain JAR, so modules that depend on a
+                                     service (e.g. intgrtn_tests) do not get every library twice. -->
+                                <outputFile>${project.build.directory}/${project.artifactId}.jar</outputFile>
                                 <createDependencyReducedPom>false</createDependencyReducedPom>
                                 <transformers>
                                     <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">

@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>at.ac.univie.dse.iot</groupId>
+        <artifactId>iot-cloud-parent</artifactId>
+        <version>0.1.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>intgrtn_tests</artifactId>
+    <name>DSE IoT :: Integration Tests</name>
+    <description>Integration tests of the CF, the microservices, the clients and the APIs (RMI, REST, UDP, web).</description>
+
+    <dependencies>
+        <dependency>
+            <groupId>at.ac.univie.dse.iot</groupId>
+            <artifactId>common</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>at.ac.univie.dse.iot</groupId>
+            <artifactId>cf</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>at.ac.univie.dse.iot</groupId>
+            <artifactId>ms_iot</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>at.ac.univie.dse.iot</groupId>
+            <artifactId>ms_fog</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>at.ac.univie.dse.iot</groupId>
+            <artifactId>ml_api</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>at.ac.univie.dse.iot</groupId>
+            <artifactId>ms_ml</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>at.ac.univie.dse.iot</groupId>
+            <artifactId>clnt_ml</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>at.ac.univie.dse.iot</groupId>
+            <artifactId>web_ml</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>at.ac.univie.dse.iot</groupId>
+            <artifactId>test_support</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.awaitility</groupId>
+            <artifactId>awaitility</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <!-- The module has no main code. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <configuration>
+                    <skipIfEmpty>true</skipIfEmpty>
+                </configuration>
+            </plugin>
+            <!-- Integration tests are named *IT and run in "mvn verify"; skip them with -DskipITs. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-failsafe-plugin</artifactId>
+            </plugin>
+        </plugins>
+    </build>
+</project>
