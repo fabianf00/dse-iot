@@ -1,5 +1,5 @@
-# Assignment description (kept locally, not part of the repository)
-/DSE_Project_2021W_DESIGN.pdf
+# PDF files (e.g. the assignment descriptions, kept locally, not part of the repository)
+*.pdf
 
 # Build output
 target/
