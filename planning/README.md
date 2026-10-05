@@ -63,3 +63,16 @@ MS ML, and the client CLNT ML, as described in `DSE_Project_2021W_DESIGN.pdf`.
 - [ ] Configs for the minimum layout (6 IoT, 2 Fog, 1 ML, 1 CLNT) and start/stop scripts
 - [ ] Integration tests from 06-integration-testing.md
 - [ ] Full system run locally and over the VPN
+
+## Change request (FINAL)
+
+The change request in `DSE_Project_2021W_FINAL.pdf` extends the plan above. The files above
+stay as they are. The changes are described in:
+
+| File | Content |
+|---|---|
+| [08-change-request-overview.md](08-change-request-overview.md) | New requirements → plan, updated system overview, technology decisions, new modules and ports, what changes in 01–07 |
+| [09-ms-ml-storage-and-rest.md](09-ms-ml-storage-and-rest.md) | MS ML: historic storage with JPA/Hibernate/H2 (no explicit SQL), recording path, REST API v1 (endpoints, filters, examples, errors) |
+| [10-web-ml.md](10-web-ml.md) | WEB ML: minimal static UI with charts, views, rules for "no logic, no storage", edge cases |
+| [11-integration-tests.md](11-integration-tests.md) | Separate integration test project, shared test helpers, moved and new IT scenarios, new unit tests |
+| [12-change-request-implementation-order.md](12-change-request-implementation-order.md) | Steps 9–16, risks, decisions to confirm |
