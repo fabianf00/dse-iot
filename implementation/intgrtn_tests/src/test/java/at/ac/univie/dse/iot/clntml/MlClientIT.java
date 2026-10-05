@@ -1,26 +1,22 @@
 package at.ac.univie.dse.iot.clntml;
 
-import static org.awaitility.Awaitility.await;
+import static at.ac.univie.dse.iot.testsupport.Waiting.waiting;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import at.ac.univie.dse.iot.common.config.ConfigLoader;
 import at.ac.univie.dse.iot.common.service.AbstractMicroService;
 import at.ac.univie.dse.iot.mlapi.MlRemoteService;
+import at.ac.univie.dse.iot.testsupport.FakeMlService;
+import at.ac.univie.dse.iot.testsupport.Ports;
+import at.ac.univie.dse.iot.testsupport.RmiTestServer;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.PrintStream;
-import java.net.InetAddress;
-import java.net.ServerSocket;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.rmi.NoSuchObjectException;
 import java.rmi.RemoteException;
-import java.rmi.registry.LocateRegistry;
-import java.rmi.registry.Registry;
-import java.rmi.server.UnicastRemoteObject;
-import java.time.Duration;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -34,21 +30,19 @@ import org.junit.jupiter.api.io.TempDir;
  * IT-CLNT (client side): the real client and real RMI against an exported fake ML service.
  * The full pipeline with real services is the end-to-end scenario of the deployment step.
  */
-class MlClientIntegrationTest {
-
-    private static final Duration TIMEOUT = Duration.ofSeconds(15);
+class MlClientIT {
 
     @TempDir
     Path dir;
 
     private int registryPort;
-    private Registry registry;
-    private FakeMlService exported;
+    private RmiTestServer server;
     private Path config;
 
     @BeforeEach
     void setUp() throws IOException {
-        registryPort = freeTcpPort();
+        registryPort = Ports.freeTcpPort();
+        server = new RmiTestServer(registryPort);
         config = Files.writeString(dir.resolve("clnt.json"), """
                 { "pollIntervalMs": 200, "endpoints": [ { "name": "ml-1", "host": "127.0.0.1", "registryPort": %d } ] }
                 """.formatted(registryPort));
@@ -119,15 +113,15 @@ class MlClientIntegrationTest {
         try {
             ClientConfig loaded = new ConfigLoader().load(config, ClientConfig.class);
             Future<Integer> exitCode = executor.submit(() -> client.run(loaded));
-            await().atMost(TIMEOUT).until(() -> text(bytes).contains("PREDICTION  co2"));
-            await().atMost(TIMEOUT).until(() -> text(bytes).contains("-- no new anomalies or prediction changes --"));
+            waiting().until(() -> text(bytes).contains("PREDICTION  co2"));
+            waiting().until(() -> text(bytes).contains("-- no new anomalies or prediction changes --"));
 
             stopServer();
-            await().atMost(TIMEOUT).until(() -> text(bytes).contains("WARN        unreachable"));
+            waiting().until(() -> text(bytes).contains("WARN        unreachable"));
             assertEquals(AbstractMicroService.State.RUNNING, client.state(), "the client keeps running");
 
             startServer(new FakeMlService(8).withAnomaly("temp-sudden-drop", 14.2));
-            await().atMost(TIMEOUT).until(() -> text(bytes).contains("ANOMALY     temp-sudden-drop"));
+            waiting().until(() -> text(bytes).contains("ANOMALY     temp-sudden-drop"));
             String output = text(bytes);
             assertTrue(output.contains("INFO        server restarted (new epoch), cursor reset"), output);
             assertTrue(output.contains("INFO        reachable again"), output);
@@ -173,30 +167,10 @@ class MlClientIntegrationTest {
     }
 
     private void startServer(FakeMlService service) throws RemoteException {
-        registry = LocateRegistry.createRegistry(registryPort);
-        MlRemoteService stub = (MlRemoteService) UnicastRemoteObject.exportObject(service, 0);
-        registry.rebind(MlRemoteService.DEFAULT_BIND_NAME, stub);
-        exported = service;
+        server.start(service, MlRemoteService.DEFAULT_BIND_NAME);
     }
 
     private void stopServer() {
-        try {
-            if (exported != null) {
-                UnicastRemoteObject.unexportObject(exported, true);
-            }
-            if (registry != null) {
-                UnicastRemoteObject.unexportObject(registry, true);
-            }
-        } catch (NoSuchObjectException e) {
-            // Already stopped.
-        }
-        exported = null;
-        registry = null;
-    }
-
-    private static int freeTcpPort() throws IOException {
-        try (ServerSocket socket = new ServerSocket(0, 1, InetAddress.getByName("127.0.0.1"))) {
-            return socket.getLocalPort();
-        }
+        server.stop();
     }
 }

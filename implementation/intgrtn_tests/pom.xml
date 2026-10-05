@@ -69,6 +69,15 @@
 
     <build>
         <plugins>
+            <!-- The module has no main code, so target/classes never exists; the incremental build
+                 check of the compiler would warn about it. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <useIncrementalCompilation>false</useIncrementalCompilation>
+                </configuration>
+            </plugin>
             <!-- The module has no main code. -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>

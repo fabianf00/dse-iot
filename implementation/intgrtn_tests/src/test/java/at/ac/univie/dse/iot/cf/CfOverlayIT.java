@@ -1,6 +1,6 @@
 package at.ac.univie.dse.iot.cf;
 
-import static org.awaitility.Awaitility.await;
+import static at.ac.univie.dse.iot.testsupport.Waiting.waiting;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -10,11 +10,12 @@ import at.ac.univie.dse.iot.cf.ControlPayloads.Hello;
 import at.ac.univie.dse.iot.cf.ControlPayloads.HelloAck;
 import at.ac.univie.dse.iot.cf.ControlPayloads.RejectReason;
 import at.ac.univie.dse.iot.common.json.JsonCodec;
+import at.ac.univie.dse.iot.testsupport.Ports;
+import at.ac.univie.dse.iot.testsupport.Waiting;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.InetSocketAddress;
-import java.net.ServerSocket;
 import java.net.Socket;
 import java.time.Duration;
 import java.util.ArrayDeque;
@@ -27,7 +28,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 import org.junit.jupiter.api.AfterEach;
@@ -37,10 +37,9 @@ import org.junit.jupiter.api.Test;
  * IT-CF: real nodes on localhost. The overlay forms, floods, respects TTL, drops duplicates,
  * heals after a crash, and survives misbehaving clients.
  */
-class CfOverlayIntegrationTest {
+class CfOverlayIT {
 
-    private static final String HOST = "127.0.0.1";
-    private static final Duration TIMEOUT = Duration.ofSeconds(15);
+    private static final String HOST = Ports.HOST;
     private static final String TOPIC = "test.x";
 
     record Probe(String id, int number) {
@@ -59,7 +58,7 @@ class CfOverlayIntegrationTest {
     void overlayFormsWithinLimitsAndIsConnected() {
         List<PeerNode> overlay = startScanningOverlay(5, 3);
 
-        await().atMost(TIMEOUT).untilAsserted(() -> assertConnected(overlay));
+        waiting().untilAsserted(() -> assertConnected(overlay));
 
         for (PeerNode node : overlay) {
             Set<PeerInfo> peers = node.connectedPeers();
@@ -68,7 +67,7 @@ class CfOverlayIntegrationTest {
             assertTrue(peers.stream().noneMatch(p -> p.nodeId().equals(node.nodeId())), "no link to itself");
             assertEquals(peers.size(), peers.stream().map(PeerInfo::nodeId).distinct().count(), "one link per peer");
         }
-        await().atMost(TIMEOUT).untilAsserted(() -> {
+        waiting().untilAsserted(() -> {
             for (PeerNode node : overlay) {
                 for (PeerInfo peer : node.connectedPeers()) {
                     assertTrue(nodeById(overlay, peer.nodeId()).connectedPeers().stream()
@@ -82,7 +81,7 @@ class CfOverlayIntegrationTest {
     void everyMessageIsDeliveredExactlyOnceToEveryOtherNode() throws InterruptedException {
         List<PeerNode> overlay = startScanningOverlay(5, 3);
         overlay.forEach(this::record);
-        await().atMost(TIMEOUT).untilAsserted(() -> assertConnected(overlay));
+        waiting().untilAsserted(() -> assertConnected(overlay));
         PeerNode publisher = overlay.get(0);
 
         for (int i = 0; i < 100; i++) {
@@ -90,9 +89,9 @@ class CfOverlayIntegrationTest {
         }
 
         for (PeerNode node : overlay.subList(1, overlay.size())) {
-            await().atMost(TIMEOUT).until(() -> receivedBy(node).size() == 100);
+            waiting().until(() -> receivedBy(node).size() == 100);
         }
-        Thread.sleep(300);
+        Waiting.pause(Duration.ofMillis(300));
         for (PeerNode node : overlay.subList(1, overlay.size())) {
             assertEquals(100, receivedBy(node).size());
             assertTrue(receivedBy(node).values().stream().allMatch(count -> count.get() == 1),
@@ -111,10 +110,10 @@ class CfOverlayIntegrationTest {
 
         triangle.get(0).publish(TOPIC, new Probe("cycle", 1));
 
-        await().atMost(TIMEOUT).until(() -> receivedBy(triangle.get(1)).size() == 1
+        waiting().until(() -> receivedBy(triangle.get(1)).size() == 1
                 && receivedBy(triangle.get(2)).size() == 1);
-        await().atMost(TIMEOUT).until(() -> triangle.get(1).duplicatesDropped() + triangle.get(2).duplicatesDropped() >= 1);
-        Thread.sleep(200);
+        waiting().until(() -> triangle.get(1).duplicatesDropped() + triangle.get(2).duplicatesDropped() >= 1);
+        Waiting.pause(Duration.ofMillis(200));
         assertEquals(1, receivedBy(triangle.get(1)).values().iterator().next().get());
         assertEquals(1, receivedBy(triangle.get(2)).values().iterator().next().get());
     }
@@ -129,10 +128,10 @@ class CfOverlayIntegrationTest {
 
         line.get(0).publish(TOPIC, new Probe("ttl", 1));
 
-        await().atMost(TIMEOUT).until(() -> receivedBy(line.get(3)).size() == 1);
+        waiting().until(() -> receivedBy(line.get(3)).size() == 1);
         assertEquals(1, receivedBy(line.get(1)).size());
         assertEquals(1, receivedBy(line.get(2)).size());
-        Thread.sleep(300);
+        Waiting.pause(Duration.ofMillis(300));
         assertTrue(receivedBy(line.get(4)).isEmpty(), "the fourth hop is beyond TTL 3");
     }
 
@@ -140,23 +139,23 @@ class CfOverlayIntegrationTest {
     void overlayHealsAfterANodeCrashes() {
         List<PeerNode> overlay = startScanningOverlay(5, 6);
         overlay.forEach(this::record);
-        await().atMost(TIMEOUT).untilAsserted(() -> assertConnected(overlay));
+        waiting().untilAsserted(() -> assertConnected(overlay));
         PeerNode crashed = overlay.get(2);
 
         crashed.abort();
 
         List<PeerNode> survivors = overlay.stream().filter(n -> n != crashed).toList();
         survivors.forEach(this::receivedProbeIds);
-        await().atMost(TIMEOUT).untilAsserted(() -> {
+        waiting().untilAsserted(() -> {
             for (PeerNode node : survivors) {
                 assertTrue(node.connectedPeers().stream().noneMatch(p -> p.nodeId().equals(crashed.nodeId())));
             }
         });
         AtomicInteger probe = new AtomicInteger();
-        await().atMost(TIMEOUT).pollInterval(Duration.ofMillis(200)).untilAsserted(() -> {
+        waiting().pollInterval(Duration.ofMillis(200)).untilAsserted(() -> {
             String id = "after-crash-" + probe.incrementAndGet();
             survivors.get(0).publish(TOPIC, new Probe(id, 0));
-            Thread.sleep(100);
+            Waiting.pause(Duration.ofMillis(100));
             for (PeerNode node : survivors.subList(1, survivors.size())) {
                 assertTrue(receivedProbeIds(node).contains(id), node.nodeId() + " missed " + id);
             }
@@ -167,17 +166,17 @@ class CfOverlayIntegrationTest {
     void rollingRefreshReplacesLinksAndKeepsTheOverlayWorking() {
         List<PeerNode> overlay = startScanningOverlay(6, 6, Duration.ofMillis(400));
         overlay.forEach(this::receivedProbeIds);
-        await().atMost(TIMEOUT).until(() -> overlay.stream().anyMatch(n -> outgoingLinks(n).size() == 3));
+        waiting().until(() -> overlay.stream().anyMatch(n -> outgoingLinks(n).size() == 3));
         PeerNode full = overlay.stream().filter(n -> outgoingLinks(n).size() == 3).findFirst().orElseThrow();
         Set<PeerInfo> before = outgoingLinks(full);
 
-        await().atMost(TIMEOUT).until(() -> outgoingLinks(full).stream().noneMatch(before::contains));
+        waiting().until(() -> outgoingLinks(full).stream().noneMatch(before::contains));
 
         AtomicInteger probe = new AtomicInteger();
-        await().atMost(TIMEOUT).pollInterval(Duration.ofMillis(200)).untilAsserted(() -> {
+        waiting().pollInterval(Duration.ofMillis(200)).untilAsserted(() -> {
             String id = "after-refresh-" + probe.incrementAndGet();
             overlay.get(0).publish(TOPIC, new Probe(id, 0));
-            Thread.sleep(100);
+            Waiting.pause(Duration.ofMillis(100));
             for (PeerNode node : overlay.subList(1, overlay.size())) {
                 assertTrue(receivedProbeIds(node).contains(id), node.nodeId() + " missed " + id);
             }
@@ -191,7 +190,7 @@ class CfOverlayIntegrationTest {
         PeerNode target = pair.get(1);
 
         try (Socket raw = new Socket(HOST, listenPort(target))) {
-            raw.setSoTimeout((int) TIMEOUT.toMillis());
+            raw.setSoTimeout((int) Waiting.TIMEOUT.toMillis());
             new DataOutputStream(raw.getOutputStream()).writeInt(10 * 1024 * 1024);
 
             assertEquals(-1, raw.getInputStream().read(), "connection is closed");
@@ -201,20 +200,20 @@ class CfOverlayIntegrationTest {
 
     @Test
     void silentPeerGetsPingedAndIsDisconnected() throws IOException {
-        PeerNode node = startNode(CfConfig.builder("silent-test", freePorts(1))
+        PeerNode node = startNode(CfConfig.builder("silent-test", Ports.freeTcpRange(1))
                 .listenHost(HOST)
                 .heartbeat(Duration.ofMillis(100), Duration.ofMillis(500))
                 .build());
         FrameCodec codec = new FrameCodec(JsonCodec.shared(), CfConfig.DEFAULT_MAX_FRAME_BYTES);
 
         try (Socket raw = new Socket(HOST, listenPort(node))) {
-            raw.setSoTimeout((int) TIMEOUT.toMillis());
+            raw.setSoTimeout((int) Waiting.TIMEOUT.toMillis());
             FramedSocket socket = new FramedSocket(raw, codec);
             socket.writeAndFlush(hello("silent-client"));
             assertTrue(socket.read().payloadAs(HelloAck.class).accepted());
 
             assertEquals(MessageType.PING, socket.read().type());
-            await().atMost(TIMEOUT).until(() -> node.connectedPeers().isEmpty());
+            waiting().until(() -> node.connectedPeers().isEmpty());
             assertEquals(-1, drainUntilClosed(raw.getInputStream()));
         }
     }
@@ -225,7 +224,7 @@ class CfOverlayIntegrationTest {
         FrameCodec codec = new FrameCodec(JsonCodec.shared(), CfConfig.DEFAULT_MAX_FRAME_BYTES);
 
         try (Socket raw = new Socket(HOST, listenPort(node))) {
-            raw.setSoTimeout((int) TIMEOUT.toMillis());
+            raw.setSoTimeout((int) Waiting.TIMEOUT.toMillis());
             FramedSocket socket = new FramedSocket(raw, codec);
             socket.writeAndFlush(hello(node.nodeId().value()));
 
@@ -254,14 +253,14 @@ class CfOverlayIntegrationTest {
 
         closing.close();
 
-        await().atMost(TIMEOUT).until(() -> pair.get(1).connectedPeers().isEmpty());
-        await().atMost(TIMEOUT).until(() -> Thread.getAllStackTraces().keySet().stream()
+        waiting().until(() -> pair.get(1).connectedPeers().isEmpty());
+        waiting().until(() -> Thread.getAllStackTraces().keySet().stream()
                 .noneMatch(t -> t.isAlive() && t.getName().startsWith("cf-" + closing.nodeId() + "-")));
     }
 
     @Test
     void apiMisuseIsReported() {
-        int port = freePorts(1);
+        int port = Ports.freeTcpRange(1);
         PeerNode node = new PeerNode(CfConfig.builder("misuse", port).listenHost(HOST).build());
         nodes.add(node);
 
@@ -284,7 +283,7 @@ class CfOverlayIntegrationTest {
     }
 
     private List<PeerNode> startScanningOverlay(int count, int ttl, Duration refreshInterval) {
-        int basePort = freePorts(count);
+        int basePort = Ports.freeTcpRange(count);
         CfConfig.ScanConfig scan = new CfConfig.ScanConfig(List.of(HOST),
                 new CfConfig.PortRange(basePort, basePort + count - 1), 50, 200, 500, 200, 5);
         List<PeerNode> started = new ArrayList<>();
@@ -307,7 +306,7 @@ class CfOverlayIntegrationTest {
     }
 
     private List<PeerNode> startPassiveNodes(int count, int ttl) {
-        int basePort = freePorts(count);
+        int basePort = Ports.freeTcpRange(count);
         List<PeerNode> started = new ArrayList<>();
         for (int i = 0; i < count; i++) {
             started.add(startNode(CfConfig.builder("passive-" + (char) ('a' + i), basePort + i)
@@ -328,7 +327,7 @@ class CfOverlayIntegrationTest {
 
     private void connect(PeerNode from, PeerNode to) {
         assertTrue(from.connectTo(new InetSocketAddress(HOST, listenPort(to))));
-        await().atMost(TIMEOUT).until(() -> to.connectedPeers().stream().anyMatch(p -> p.nodeId().equals(from.nodeId())));
+        waiting().until(() -> to.connectedPeers().stream().anyMatch(p -> p.nodeId().equals(from.nodeId())));
     }
 
     private void record(PeerNode node) {
@@ -386,28 +385,5 @@ class CfOverlayIntegrationTest {
             read = in.read();
         } while (read != -1);
         return read;
-    }
-
-    /** Finds {@code count} consecutive free ports on localhost and returns the first. */
-    private static int freePorts(int count) {
-        for (int attempt = 0; attempt < 50; attempt++) {
-            int base = ThreadLocalRandom.current().nextInt(40_000, 60_000);
-            if (allFree(base, count)) {
-                return base;
-            }
-        }
-        throw new IllegalStateException("no free port range found");
-    }
-
-    private static boolean allFree(int base, int count) {
-        for (int port = base; port < base + count; port++) {
-            try (ServerSocket socket = new ServerSocket()) {
-                socket.setReuseAddress(true);
-                socket.bind(new InetSocketAddress(HOST, port));
-            } catch (IOException e) {
-                return false;
-            }
-        }
-        return true;
     }
 }

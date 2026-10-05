@@ -1,6 +1,6 @@
 package at.ac.univie.dse.iot.msml;
 
-import static org.awaitility.Awaitility.await;
+import static at.ac.univie.dse.iot.testsupport.Waiting.waiting;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -14,10 +14,9 @@ import at.ac.univie.dse.iot.mlapi.MlRemoteService;
 import at.ac.univie.dse.iot.mlapi.PollResult;
 import at.ac.univie.dse.iot.mlapi.PredictionChangeDto;
 import at.ac.univie.dse.iot.mlapi.ServiceStatusDto;
-import java.io.IOException;
-import java.net.DatagramSocket;
-import java.net.InetSocketAddress;
-import java.net.ServerSocket;
+import at.ac.univie.dse.iot.testsupport.FakeFogServer;
+import at.ac.univie.dse.iot.testsupport.Ports;
+import at.ac.univie.dse.iot.testsupport.Waiting;
 import java.rmi.registry.LocateRegistry;
 import java.time.Duration;
 import java.util.List;
@@ -29,9 +28,8 @@ import org.junit.jupiter.api.Test;
  * IT-ML: subscriptions at two fogs, anomaly detection, prediction changes and RMI polling, a fog
  * restart with a late replay, and a flood of aggregates.
  */
-class MlServiceIntegrationTest {
+class MlServiceIT {
 
-    private static final Duration TIMEOUT = Duration.ofSeconds(15);
     private static final DataType TEMPERATURE = DataType.of("temperature");
     private static final DataType CO2 = DataType.of("co2");
     private static final long ROUND_MS = 250;
@@ -45,7 +43,7 @@ class MlServiceIntegrationTest {
     void setUp() throws Exception {
         temperatureFog = new FakeFogServer("fog-temp", TEMPERATURE, Unit.CELSIUS);
         co2Fog = new FakeFogServer("fog-co2", CO2, Unit.PPM);
-        int registryPort = freeTcpPort();
+        int registryPort = Ports.freeTcpPort();
         MlConfig config = new ConfigLoader().parse("""
                 {
                   "serviceId": "ml-test",
@@ -68,7 +66,7 @@ class MlServiceIntegrationTest {
                   ] },
                   "rmi": { "hostname": "127.0.0.1", "registryPort": %d, "bindName": "MlService" }
                 }
-                """.formatted(temperatureFog.port(), co2Fog.port(), freeUdpPort(), registryPort), MlConfig.class, "ml-test");
+                """.formatted(temperatureFog.port(), co2Fog.port(), Ports.freeUdpPort(), registryPort), MlConfig.class, "ml-test");
         ml = new MlService();
         ml.start(config);
         client = (MlRemoteService) LocateRegistry.getRegistry("127.0.0.1", registryPort).lookup("MlService");
@@ -84,8 +82,8 @@ class MlServiceIntegrationTest {
     @Test
     void detectsAnomaliesAndPredictionChangesAndServesThemOverRmi() throws Exception {
         // 1. ML subscribes at both fogs.
-        await().atMost(TIMEOUT).until(() -> temperatureFog.hasSubscriber("ml-test") && co2Fog.hasSubscriber("ml-test"));
-        await().atMost(TIMEOUT).until(() -> client.getStatus().fogStatus().values().stream()
+        waiting().until(() -> temperatureFog.hasSubscriber("ml-test") && co2Fog.hasSubscriber("ml-test"));
+        waiting().until(() -> client.getStatus().fogStatus().values().stream()
                 .allMatch(status -> status.startsWith("ACTIVE")));
 
         // 2. Normal behaviour: no anomaly; first predictions.
@@ -114,7 +112,7 @@ class MlServiceIntegrationTest {
         cursor = anomalies.nextCursor();
 
         // 4. Nothing new happened: an empty page with the same cursor.
-        Thread.sleep(1_000);
+        Waiting.pause(Duration.ofMillis(1_000));
         PollResult nothing = client.pollEvents(cursor, 100);
         assertTrue(nothing.events().isEmpty(), nothing.events().toString());
         assertEquals(cursor, nothing.nextCursor());
@@ -122,10 +120,10 @@ class MlServiceIntegrationTest {
         // 5. CO2 shifts from 600 to 800: exactly one prediction change, not one per value.
         for (int i = 0; i < 20; i++) {
             co2Fog.sendAggregate(800.0);
-            Thread.sleep(ROUND_MS / 2);
+            Waiting.pause(Duration.ofMillis(ROUND_MS / 2));
         }
-        await().atMost(TIMEOUT).until(() -> client.getStatus().queueSize() == 0);
-        Thread.sleep(300);
+        waiting().until(() -> client.getStatus().queueSize() == 0);
+        Waiting.pause(Duration.ofMillis(300));
         List<PredictionChangeDto> co2Changes = co2Changes(cursor);
         assertEquals(1, co2Changes.size(), co2Changes.toString());
         assertEquals(600.0, co2Changes.get(0).previous().binLower());
@@ -136,17 +134,17 @@ class MlServiceIntegrationTest {
         //    and processes the new stream.
         long oldEpoch = co2Fog.epoch();
         co2Fog.restart();
-        await().atMost(TIMEOUT).until(() -> co2Fog.hasSubscriber("ml-test"));
-        Thread.sleep(300);
+        waiting().until(() -> co2Fog.hasSubscriber("ml-test"));
+        Waiting.pause(Duration.ofMillis(300));
         for (int i = 0; i < 12; i++) {
             co2Fog.sendRaw(oldEpoch, 1_000 + i, 5_000.0);
         }
         for (int i = 0; i < 15; i++) {
             co2Fog.sendAggregate(960.0);
-            Thread.sleep(ROUND_MS / 2);
+            Waiting.pause(Duration.ofMillis(ROUND_MS / 2));
         }
-        await().atMost(TIMEOUT).until(() -> client.getStatus().queueSize() == 0);
-        Thread.sleep(300);
+        waiting().until(() -> client.getStatus().queueSize() == 0);
+        Waiting.pause(Duration.ofMillis(300));
         List<PredictionChangeDto> afterRestart = co2Changes(cursor);
         assertEquals(1, afterRestart.size(), afterRestart.toString());
         assertEquals(950.0, afterRestart.get(0).current().binLower(), "old-epoch values (5000) were ignored");
@@ -160,7 +158,7 @@ class MlServiceIntegrationTest {
         long millis = (System.nanoTime() - before) / 1_000_000;
         assertTrue(millis < 500, "getStatus took " + millis + " ms");
         assertEquals(List.of("co2", "temperature"), status.dataTypes());
-        await().atMost(TIMEOUT).until(() -> client.getStatus().queueSize() == 0);
+        waiting().until(() -> client.getStatus().queueSize() == 0);
         assertEquals(AbstractMicroService.State.RUNNING, ml.state());
         assertTrue(client.getCurrentPredictions().stream().anyMatch(p -> p.dataType().equals("temperature")));
     }
@@ -183,12 +181,12 @@ class MlServiceIntegrationTest {
     private void round(double temperature, double co2) throws InterruptedException {
         temperatureFog.sendAggregate(temperature);
         co2Fog.sendAggregate(co2);
-        Thread.sleep(ROUND_MS);
+        Waiting.pause(Duration.ofMillis(ROUND_MS));
     }
 
     private PollResult awaitEvents(long cursor, java.util.function.Predicate<List<MlEventDto>> condition) {
         PollResult[] result = new PollResult[1];
-        await().atMost(TIMEOUT).until(() -> {
+        waiting().until(() -> {
             result[0] = client.pollEvents(cursor, 100);
             return condition.test(result[0].events());
         });
@@ -200,17 +198,5 @@ class MlServiceIntegrationTest {
                 .filter(e -> e instanceof PredictionChangeDto p && p.dataType().equals("co2"))
                 .map(PredictionChangeDto.class::cast)
                 .toList();
-    }
-
-    private static int freeTcpPort() throws IOException {
-        try (ServerSocket socket = new ServerSocket(0, 1, java.net.InetAddress.getByName("127.0.0.1"))) {
-            return socket.getLocalPort();
-        }
-    }
-
-    private static int freeUdpPort() throws IOException {
-        try (DatagramSocket socket = new DatagramSocket(new InetSocketAddress("127.0.0.1", 0))) {
-            return socket.getLocalPort();
-        }
     }
 }
