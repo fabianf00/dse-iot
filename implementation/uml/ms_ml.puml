@@ -1,5 +1,5 @@
 @startuml ms_ml
-title ms_ml + ml_api – anomaly detection (behaviour chains), prediction (histograms), job/worker design, RMI API
+title ms_ml + ml_api – anomaly detection (behaviour chains), prediction (histograms), job/worker design, RMI API\n(storage, results and REST API: see ms_ml_results.puml)
 skinparam classAttributeIconSize 0
 hide empty members
 set separator none
@@ -81,6 +81,9 @@ package "at.ac.univie.dse.iot.msml" {
     #startComponents() : void
     #stopComponents() : void
     ~status() : ServiceStatusDto
+    ~restStatus() : StatusResource
+    ~meta() : MetaResource
+    ~restPort() : int
   }
   class MlConfig <<record>> {
     serviceId : String
@@ -92,7 +95,16 @@ package "at.ac.univie.dse.iot.msml" {
     prediction : PredictionConfig
     events : EventsConfig
     rmi : RmiConfig
+    storage : StorageConfig
+    rest : RestConfig
   }
+}
+
+package "storage, results, rest (see ms_ml_results.puml)" {
+  class ResultRecorder
+  class Database
+  class ResultService
+  class RestServer
 }
 
 package "at.ac.univie.dse.iot.msml.ingest" {
@@ -304,6 +316,7 @@ package "at.ac.univie.dse.iot.msml.events" {
     +append(anomaly : Anomaly) : AnomalyEvent
     +append(change : PredictionChange) : PredictionChangedEvent
     +since(cursor : long, max : int) : Page
+    +addListener(listener : Consumer<MlEvent>) : void
     +lastSequence() : long
     +epoch() : long
   }
@@ -352,6 +365,11 @@ MlService *-- TimeSeriesStore
 MlService *-- EventLog
 MlService *-- HistogramPredictor
 MlService *-- MlRmiServer
+MlService *-- Database
+MlService *-- ResultRecorder
+MlService *-- ResultService
+MlService *-- RestServer
+EventLog --> ResultRecorder : notifies
 MlService ..> MlConfig
 FogClient --> AggregateListener
 FogClient o-- "1..*" FogSubscriptionState

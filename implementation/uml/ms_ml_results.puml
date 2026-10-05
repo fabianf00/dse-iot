@@ -1,0 +1,260 @@
+@startuml ms_ml_results
+title ms_ml – historic results: storage (JPA/Hibernate, H2), result use cases, REST API (Javalin)
+skinparam classAttributeIconSize 0
+hide empty members
+set separator none
+
+package "at.ac.univie.dse.iot.msml (see ms_ml.puml)" {
+  class MlService
+  class EventLog
+  class HistogramPredictor
+  interface MlEvent
+  class Prediction
+}
+
+package "libraries" {
+  class EntityManagerFactory <<external>>
+  class Javalin <<external>>
+  class Context <<external>>
+}
+
+package "at.ac.univie.dse.iot.msml.storage" {
+  class StorageConfig <<record>> {
+    jdbcUrl : String
+    user : String
+    password : String
+    recorderQueueCapacity : int
+    poolSize : int
+    +{static} defaultFor(serviceId : String) : StorageConfig
+    +withDefaultUrl(serviceId : String) : StorageConfig
+  }
+  class Database {
+    +{static} open(config : StorageConfig) : Database
+    +inTransaction(work : Function<EntityManager, T>) : T
+    +runInTransaction(work : Consumer<EntityManager>) : void
+    +jdbcUrl() : String
+    +close() : void
+  }
+  class StorageException
+  class ResultRecorder <<event listener>> {
+    +accept(event : MlEvent) : void
+    +start() : void
+    +stop(timeout : Duration) : void
+    +recordedCount() : long
+    +duplicateCount() : long
+    +failedCount() : long
+    +queueSize() : int
+  }
+  interface ResultRepository {
+    +record(result : MlResultEntity) : boolean
+    +find(kind : ResultKind, id : long) : Optional<StoredResult>
+    +search(filter : ResultFilter, page : PageRequest) : Page<StoredResult>
+    +count(filter : ResultFilter) : long
+    +delete(kind : ResultKind, id : long) : boolean
+    +deleteMatching(filter : ResultFilter) : long
+    +comments(kind : ResultKind, resultId : long) : Optional<List<StoredComment>>
+    +addComment(kind : ResultKind, resultId : long, text : String, author : String, now : Instant) : Optional<StoredComment>
+    +updateComment(commentId : long, text : String, now : Instant) : Optional<StoredComment>
+    +deleteComment(commentId : long) : boolean
+  }
+  class JpaResultRepository implements ResultRepository
+  note right of JpaResultRepository : Criteria API only (no SQL, no JPQL);\nreturns immutable StoredResult records,\nentities never leave the package
+
+  abstract class MlResultEntity <<@Entity ml_result, SINGLE_TABLE>> {
+    id : Long
+    mlInstance : String
+    serverEpoch : long
+    eventSequence : long
+    dataType : String
+    occurredAt : Instant
+    recordedAt : Instant
+    +{abstract} kind() : ResultKind
+    ~addComment(text : String, author : String, now : Instant) : CommentEntity
+  }
+  class AnomalyEntity <<@Entity ANOMALY>> {
+    chainId : String
+    chainDescription : String
+    expected : String
+    observedValue : Double
+    unit : String
+    observedAt : Instant
+    expectedUntil : Instant
+  }
+  class PredictionEntity <<@Entity PREDICTION>> {
+    unit : String
+    binLower : Double
+    binUpper : Double
+    mostLikelyValue : Double
+    confidence : Double
+    sampleCount : Integer
+    previousBinLower : Double
+    previousBinUpper : Double
+  }
+  class PhaseObservationEmbeddable <<@Embeddable>> {
+    condition : String
+    periodStart : Instant
+    periodEnd : Instant
+    samples : Integer
+  }
+  class CommentEntity <<@Entity ml_comment>> {
+    id : Long
+    text : String
+    author : String
+    createdAt : Instant
+    updatedAt : Instant
+    ~edit(newText : String, now : Instant) : void
+  }
+  enum ResultKind {
+    ANOMALY
+    PREDICTION
+  }
+  class ResultFilter <<record>> {
+    kind : ResultKind
+    dataTypes : Set<String>
+    chainId : String
+    from : Instant
+    to : Instant
+    commented : Boolean
+    mlInstance : String
+    recordedBefore : Instant
+    +{static} all(kind : ResultKind) : ResultFilter
+    +withRecordedBefore(instant : Instant) : ResultFilter
+    +hasCriteria() : boolean
+  }
+  class PageRequest <<record>> {
+    limit : int
+    offset : int
+    order : SortOrder
+    +{static} firstPage() : PageRequest
+  }
+  class Page <<record>> {
+    items : List<T>
+    total : long
+    limit : int
+    offset : int
+  }
+  interface StoredResult <<sealed>>
+  class StoredAnomaly <<record>> implements StoredResult
+  class StoredPrediction <<record>> implements StoredResult
+  class StoredPhase <<record>>
+  class StoredComment <<record>> {
+    id : long
+    resultId : long
+    text : String
+    author : String
+    createdAt : Instant
+    updatedAt : Instant
+  }
+}
+
+package "at.ac.univie.dse.iot.msml.results" {
+  class ResultService {
+    +search(filter : ResultFilter, page : PageRequest) : Page<StoredResult>
+    +count(filter : ResultFilter) : long
+    +find(kind : ResultKind, id : long) : Optional<StoredResult>
+    +delete(kind : ResultKind, id : long) : boolean
+    +deleteMatching(filter : ResultFilter) : long
+    +comments(kind : ResultKind, resultId : long) : Optional<List<StoredComment>>
+    +addComment(kind : ResultKind, resultId : long, text : String, author : String) : Optional<StoredComment>
+    +updateComment(commentId : long, text : String) : Optional<StoredComment>
+    +deleteComment(commentId : long) : boolean
+  }
+  note right of ResultService : validates input; bulk delete needs a filter\nand only removes results recorded before the request
+  class InvalidRequestException
+}
+
+package "at.ac.univie.dse.iot.msml.rest" {
+  class RestConfig <<record>> {
+    host : String
+    port : int
+    allowedOrigins : List<String>
+    +{static} defaults() : RestConfig
+  }
+  class RestServer {
+    +{static} BASE_PATH : String
+    +start() : void
+    +port() : int
+    +stop() : void
+  }
+  note right of RestServer : /api/v1, CORS for WEB ML,\nerrors as RFC 9457 problem details
+  class ResultsController {
+    ~list(ctx : Context) : void
+    ~get(ctx : Context) : void
+    ~delete(ctx : Context) : void
+    ~deleteMatching(ctx : Context) : void
+  }
+  class CommentsController {
+    ~list(kind : ResultKind, ctx : Context) : void
+    ~add(kind : ResultKind, ctx : Context) : void
+    ~update(ctx : Context) : void
+    ~delete(ctx : Context) : void
+  }
+  class LiveController {
+    ~currentPredictions(ctx : Context) : void
+    ~status(ctx : Context) : void
+    ~meta(ctx : Context) : void
+  }
+  class FilterParser {
+    ~{static} filterForList(kind : ResultKind, params : Map<String, List<String>>) : ResultFilter
+    ~{static} filterForDelete(kind : ResultKind, params : Map<String, List<String>>) : ResultFilter
+    ~{static} page(params : Map<String, List<String>>) : PageRequest
+  }
+  class ResourceMapper {
+    ~{static} toResource(result : StoredResult) : Object
+    ~{static} toResource(comment : StoredComment) : CommentResource
+    ~{static} toResource(prediction : Prediction) : CurrentPredictionResource
+  }
+  class Ids {
+    ~{static} parse(value : String) : long
+  }
+  class ApiException {
+    +{static} notFound(detail : String) : ApiException
+    +{static} badRequest(detail : String) : ApiException
+    +status() : int
+  }
+  class Resources
+  note bottom of Resources : JSON records: PageResource, AnomalyResource,\nPredictionResource, PhaseResource, CommentResource,\nCommentRequest, DeletedResource, CurrentPredictionResource,\nStatusResource, StorageStatusResource, MetaResource,\nChainResource, ProblemDetails
+}
+
+MlService *-- Database
+MlService *-- ResultRecorder
+MlService *-- ResultService
+MlService *-- RestServer
+EventLog --> ResultRecorder : notifies (listener)
+ResultRecorder ..> MlEvent
+ResultRecorder --> ResultRepository : record
+ResultRecorder ..> AnomalyEntity : creates
+ResultRecorder ..> PredictionEntity : creates
+JpaResultRepository --> Database
+Database *-- EntityManagerFactory
+Database ..> StorageConfig
+Database ..> StorageException : throws
+MlResultEntity <|-- AnomalyEntity
+MlResultEntity <|-- PredictionEntity
+MlResultEntity "1" *-- "0..*" CommentEntity
+AnomalyEntity *-- "2" PhaseObservationEmbeddable : past, current
+JpaResultRepository ..> MlResultEntity
+JpaResultRepository ..> StoredResult : returns
+StoredAnomaly *-- StoredPhase
+StoredResult o-- StoredComment
+JpaResultRepository ..> ResultFilter
+JpaResultRepository ..> PageRequest
+ResultService --> ResultRepository
+ResultService ..> InvalidRequestException : throws
+RestServer *-- Javalin
+RestServer ..> RestConfig
+RestServer *-- "2" ResultsController : anomalies, predictions
+RestServer *-- CommentsController
+RestServer *-- LiveController
+ResultsController --> ResultService
+CommentsController --> ResultService
+LiveController --> HistogramPredictor
+ResultsController ..> FilterParser
+ResultsController ..> ResourceMapper
+CommentsController ..> ResourceMapper
+ResultsController ..> Ids
+CommentsController ..> Ids
+ResourceMapper ..> Resources
+RestServer ..> ApiException : maps to problem details
+ResultsController ..> Context
+@enduml

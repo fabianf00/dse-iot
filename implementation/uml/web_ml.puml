@@ -1,0 +1,80 @@
+@startuml web_ml
+title web_ml – serves the static UI and /config.json; the browser calls the ML REST API directly
+skinparam classAttributeIconSize 0
+hide empty members
+set separator none
+allowmixing
+
+package "other modules" {
+  abstract class AbstractMicroService
+  interface ValidatableConfig
+}
+
+package "JDK" {
+  class HttpServer <<external>>
+}
+
+package "at.ac.univie.dse.iot.webml" {
+  class WebMlApplication {
+    +{static} main(args : String[]) : void
+  }
+  class WebMlService extends AbstractMicroService {
+    #initialize(config : WebMlConfig) : void
+    #startComponents() : void
+    #stopComponents() : void
+    +port() : int
+  }
+  note right of WebMlService : GET and HEAD only (else 405);\nCSP: scripts/styles from self,\nconnect-src = configured ML origins
+  class BrowserConfig <<record>> {
+    endpoints : List<Endpoint>
+    refreshIntervalMs : long
+  }
+  class WebMlConfig <<record>> {
+    serviceId : String
+    bindHost : String
+    port : int
+    endpoints : List<Endpoint>
+    refreshIntervalMs : long
+  }
+  class Endpoint <<record>> implements ValidatableConfig {
+    name : String
+    restUrl : String
+    +origin() : String
+  }
+  class StaticFiles {
+    ~find(path : String) : Optional<StaticFile>
+  }
+  note right of StaticFiles : classpath web/ only: plain path segments,\nknown file types, no "..", no hidden files
+  class StaticFile <<record>> {
+    content : byte[]
+    contentType : String
+  }
+}
+
+package "classpath web/ (browser code)" {
+  artifact "index.html" as index
+  artifact "app.js" as appjs
+  artifact "style.css" as css
+  artifact "vendor/chart.umd.min.js\n(Chart.js 4.5.1, MIT)" as chartjs
+}
+note bottom of appjs : state only in the URL, no browser storage;\nAPI data rendered with textContent only
+
+node "Browser" as browser
+node "MS ML REST API\n/api/v1 (port 50303)" as mlrest
+
+WebMlApplication ..> WebMlService : runs
+WebMlService ..> WebMlConfig
+WebMlService *-- HttpServer
+WebMlService *-- StaticFiles
+WebMlService ..> BrowserConfig : GET /config.json
+WebMlConfig *-- "1..*" Endpoint
+StaticFiles ..> StaticFile
+StaticFiles ..> index : serves
+StaticFiles ..> appjs : serves
+StaticFiles ..> css : serves
+StaticFiles ..> chartjs : serves
+browser --> WebMlService : GET /, /app.js, /config.json
+browser --> mlrest : fetch (CORS)
+index ..> appjs
+appjs ..> chartjs
+@enduml
