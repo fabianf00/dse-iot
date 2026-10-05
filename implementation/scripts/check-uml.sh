@@ -44,13 +44,18 @@ method_exists() {
     grep -rqE "[^A-Za-z0-9_.]$1\(" $SOURCES
 }
 
+# check_module_types <module> <diagram...>: every top-level type of the module is in one of the diagrams.
 check_module_types() {
-    local module="$1" diagram="$UML_DIR/$2" declared file name
-    declared="$(declared_types "$diagram")"
+    local module="$1" declared="" diagram file name
+    shift
+    for diagram in "$@"; do
+        declared="$declared
+$(declared_types "$UML_DIR/$diagram")"
+    done
     for file in $(find "$ROOT/$module/src/main/java" -name '*.java' ! -name package-info.java | sort); do
         name="$(basename "$file" .java)"
         if ! echo "$declared" | grep -qx "$name"; then
-            report "$module: $name is missing in uml/$2"
+            report "$module: $name is missing in uml/$(echo "$@" | sed 's| | or uml/|g')"
         fi
     done
 }
@@ -74,9 +79,10 @@ check_module_types cf cf.puml
 check_module_types ms_iot ms_iot.puml
 check_module_types ms_fog ms_fog.puml
 check_module_types ml_api ms_ml.puml
-check_module_types ms_ml ms_ml.puml
+check_module_types ms_ml ms_ml.puml ms_ml_results.puml
 check_module_types clnt_ml clnt_ml.puml
-for diagram in common.puml cf.puml ms_iot.puml ms_fog.puml ms_ml.puml clnt_ml.puml; do
+check_module_types web_ml web_ml.puml
+for diagram in common.puml cf.puml ms_iot.puml ms_fog.puml ms_ml.puml ms_ml_results.puml clnt_ml.puml web_ml.puml; do
     check_diagram "$diagram"
 done
 

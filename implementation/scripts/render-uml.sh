@@ -7,8 +7,10 @@
 set -u
 source "$(dirname "$0")/common.sh"
 
+# PlantUML crops images larger than 4096 px by default; the bigger diagrams need more.
+export PLANTUML_LIMIT_SIZE="${PLANTUML_LIMIT_SIZE:-8192}"
 if [ -n "${PLANTUML_JAR:-}" ]; then
-    java -jar "$PLANTUML_JAR" -failfast2 -tpng "$ROOT"/uml/*.puml
+    java -DPLANTUML_LIMIT_SIZE="$PLANTUML_LIMIT_SIZE" -jar "$PLANTUML_JAR" -failfast2 -tpng "$ROOT"/uml/*.puml
 elif command -v plantuml >/dev/null 2>&1; then
     plantuml -failfast2 -tpng "$ROOT"/uml/*.puml
 else
