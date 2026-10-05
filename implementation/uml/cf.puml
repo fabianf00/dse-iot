@@ -1,0 +1,286 @@
+@startuml cf
+title cf – Communication Framework (P2P over plain TCP: scanning, flooding with TTL, duplicate detection)
+skinparam classAttributeIconSize 0
+hide empty members
+set separator none
+
+package "JDK" {
+  class RuntimeException <<external>>
+}
+
+package "at.ac.univie.dse.iot.cf" {
+
+  ' ---- public API (what microservices use) ----
+  interface CommunicationFramework <<AutoCloseable>> {
+    +start() : void
+    +publish(topic : String, payload : Object) : void
+    +subscribe(topicPattern : String, listener : MessageListener) : Subscription
+    +nodeId() : NodeId
+    +connectedPeers() : Set<PeerInfo>
+    +close() : void
+  }
+  class CommunicationFrameworkFactory {
+    +{static} create(config : CfConfig) : CommunicationFramework
+  }
+  interface MessageListener {
+    +onMessage(message : CfMessage) : void
+  }
+  interface Subscription {
+    +cancel() : void
+  }
+  class CfMessage <<record>> {
+    version : int
+    id : UUID
+    type : MessageType
+    origin : NodeId
+    sender : NodeId
+    ttl : int
+    createdAt : long
+    topic : String
+    payload : JsonNode
+    +payloadAs(type : Class<T>) : T
+    ~{static} data(origin : NodeId, topic : String, payload : JsonNode, ttl : int, now : long) : CfMessage
+    ~{static} control(type : MessageType, self : NodeId, payload : Object, now : long) : CfMessage
+    ~forwardedBy(self : NodeId) : CfMessage
+  }
+  enum MessageType {
+    HELLO
+    HELLO_ACK
+    PING
+    PONG
+    BYE
+    DATA
+    +isControl() : boolean
+  }
+  class NodeId <<record>> {
+    value : String
+    +{static} of(value : String) : NodeId
+  }
+  class PeerInfo <<record>> {
+    nodeId : NodeId
+    listenAddress : InetSocketAddress
+    direction : Direction
+    connectedSince : Instant
+  }
+  enum Direction {
+    INCOMING
+    OUTGOING
+  }
+  class CfConfig <<record>> {
+    nodeId : NodeId
+    listenHost : String
+    listenPort : int
+    advertisedHost : String
+    scan : ScanConfig
+    maxOutgoingPeers : int
+    peerRefreshIntervalMs : long
+    heartbeatIntervalMs : long
+    heartbeatTimeoutMs : long
+    defaultTtl : int
+    seenCache : SeenCacheConfig
+    outboundQueueCapacity : int
+    maxFrameBytes : int
+    +withDefaultNodeId(fallback : String) : CfConfig
+    +{static} builder(nodeId : String, listenPort : int) : Builder
+  }
+  class ScanConfig <<record>> {
+    hosts : List<String>
+    portRange : PortRange
+    intervalMs : long
+    connectTimeoutMs : long
+    handshakeTimeoutMs : long
+    failedCandidateBackoffMs : long
+    maxAttemptsPerRound : int
+  }
+  class PortRange <<record>> {
+    from : int
+    to : int
+  }
+  class SeenCacheConfig <<record>> {
+    expiryMs : long
+    maxEntries : int
+  }
+  class Builder
+  class CfException extends RuntimeException
+
+  ' ---- internals (package-private) ----
+  class PeerNode {
+    ~connectTo(candidate : InetSocketAddress) : boolean
+    ~abort() : void
+    +onData(connection : PeerConnection, message : CfMessage) : void
+    +onClosed(connection : PeerConnection, reason : String) : void
+  }
+  class ConnectionManager {
+    ~register(candidate : PeerConnection) : Registration
+    ~remove(connection : PeerConnection) : void
+    ~admission(remote : NodeId) : Optional<RejectReason>
+    +broadcast(message : CfMessage, except : NodeId) : void
+    ~closeAll() : List<PeerConnection>
+    ~hasFreeOutgoingSlot() : boolean
+    ~oldestOutgoing() : Optional<PeerConnection>
+    ~listenAddresses() : Set<InetSocketAddress>
+    ~{static} keepCandidate(self : NodeId, remote : NodeId, existing : Direction, candidate : Direction) : boolean
+  }
+  enum Registration {
+    ACCEPTED
+    REJECTED_DUPLICATE
+    REJECTED_OUTGOING_LIMIT
+    REJECTED_CLOSED
+  }
+  class PeerConnection {
+    ~start() : void
+    ~send(message : CfMessage) : boolean
+    ~closeGracefully(reason : ByeReason) : void
+    ~close(reason : String) : void
+    ~lastReceivedAt() : long
+    ~lastSentAt() : long
+    ~info() : PeerInfo
+  }
+  interface Events {
+    +onData(connection : PeerConnection, message : CfMessage) : void
+    +onClosed(connection : PeerConnection, reason : String) : void
+  }
+  class FramedSocket {
+    ~read() : CfMessage
+    ~write(message : CfMessage) : void
+    ~flush() : void
+    ~writeAndFlush(message : CfMessage) : void
+    ~setReadTimeout(timeout : Duration) : void
+  }
+  class FrameCodec {
+    ~encode(message : CfMessage) : byte[]
+    ~write(out : DataOutputStream, message : CfMessage) : void
+    ~read(in : DataInputStream) : CfMessage
+  }
+  class HandshakeHandler {
+    ~initiate(socket : FramedSocket, target : InetSocketAddress) : Result
+    ~accept(socket : FramedSocket) : Result
+  }
+  class Result <<record>> {
+    remoteId : NodeId
+    remoteListenAddress : InetSocketAddress
+  }
+  class PeerAcceptor {
+    ~start() : void
+    ~stop() : void
+  }
+  class PeerScanner {
+    ~scanRound() : void
+    ~backoff(address : InetSocketAddress) : void
+  }
+  interface Connector {
+    +connect(candidate : InetSocketAddress) : boolean
+  }
+  interface ScanStrategy {
+    +nextCandidate(excluded : Set<InetSocketAddress>) : Optional<InetSocketAddress>
+  }
+  class RandomRangeScanStrategy implements ScanStrategy
+  class HeartbeatMonitor {
+    ~check() : void
+  }
+  class PeerRefresher {
+    ~refresh() : void
+  }
+  class MessageRouter {
+    ~publish(topic : String, payload : JsonNode) : CfMessage
+    ~onData(message : CfMessage, from : NodeId) : void
+    ~duplicatesDropped() : long
+  }
+  interface Broadcaster {
+    +broadcast(message : CfMessage, except : NodeId) : void
+  }
+  interface LocalDelivery {
+    +deliver(message : CfMessage) : void
+  }
+  class SeenMessageCache {
+    ~markIfNew(id : UUID) : boolean
+    ~evictExpired() : void
+  }
+  class SubscriptionRegistry {
+    ~add(pattern : String, listener : MessageListener) : Subscription
+    ~matching(topic : String) : List<MessageListener>
+  }
+  class MessageDispatcher implements LocalDelivery {
+    +deliver(message : CfMessage) : void
+    ~close() : void
+  }
+  class TopicMatcher {
+    ~{static} requireValidTopic(topic : String) : String
+    ~{static} requireValidPattern(pattern : String) : String
+    ~{static} matches(pattern : String, topic : String) : boolean
+  }
+  class ControlPayloads {
+    ~{static} MAGIC : String
+  }
+  class Hello <<record>>
+  class HelloAck <<record>>
+  class Bye <<record>>
+  enum RejectReason {
+    SELF_CONNECTION
+    ALREADY_CONNECTED
+    UNSUPPORTED_VERSION
+    SHUTTING_DOWN
+  }
+  enum ByeReason {
+    REFRESH
+    SHUTDOWN
+    PROTOCOL_ERROR
+    DUPLICATE_CONNECTION
+  }
+  class ProtocolExceptions
+  class ProtocolViolationException
+  class MalformedMessageException
+  class FrameTooLargeException extends CfException
+  class HandshakeRejectedException
+
+  CommunicationFrameworkFactory ..> PeerNode : creates
+  CommunicationFramework <|.. PeerNode
+  Events <|.. PeerNode
+  Broadcaster <|.. ConnectionManager
+  CfConfig *-- ScanConfig
+  CfConfig *-- SeenCacheConfig
+  ScanConfig *-- PortRange
+  CfConfig +-- Builder
+  PeerNode *-- ConnectionManager
+  PeerNode *-- MessageRouter
+  PeerNode *-- SubscriptionRegistry
+  PeerNode *-- MessageDispatcher
+  PeerNode *-- SeenMessageCache
+  PeerNode *-- HandshakeHandler
+  PeerNode *-- PeerAcceptor
+  PeerNode *-- PeerScanner
+  PeerNode *-- HeartbeatMonitor
+  PeerNode *-- PeerRefresher
+  PeerScanner --> ScanStrategy
+  PeerScanner --> Connector
+  PeerScanner --> ConnectionManager
+  PeerRefresher --> ConnectionManager
+  PeerRefresher --> PeerScanner
+  HeartbeatMonitor --> ConnectionManager
+  ConnectionManager o-- "0..*" PeerConnection
+  ConnectionManager ..> Registration
+  PeerConnection --> FramedSocket
+  PeerConnection --> Events
+  FramedSocket --> FrameCodec
+  HandshakeHandler ..> Result
+  HandshakeHandler ..> Hello
+  HandshakeHandler ..> HelloAck
+  MessageRouter --> SeenMessageCache
+  MessageRouter --> Broadcaster
+  MessageRouter --> LocalDelivery
+  MessageDispatcher --> SubscriptionRegistry
+  SubscriptionRegistry o-- MessageListener
+  ControlPayloads +-- Hello
+  ControlPayloads +-- HelloAck
+  ControlPayloads +-- Bye
+  ControlPayloads +-- RejectReason
+  ControlPayloads +-- ByeReason
+  ProtocolExceptions +-- ProtocolViolationException
+  ProtocolExceptions +-- MalformedMessageException
+  ProtocolExceptions +-- FrameTooLargeException
+  ProtocolExceptions +-- HandshakeRejectedException
+  CfMessage --> MessageType
+  CfMessage --> NodeId
+  PeerInfo --> Direction
+}
+@enduml

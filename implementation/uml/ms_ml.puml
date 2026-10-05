@@ -1,0 +1,385 @@
+@startuml ms_ml
+title ms_ml + ml_api – anomaly detection (behaviour chains), prediction (histograms), job/worker design, RMI API
+skinparam classAttributeIconSize 0
+hide empty members
+set separator none
+
+package "other modules" {
+  abstract class AbstractMicroService
+}
+
+package "at.ac.univie.dse.iot.mlapi (module ml_api)" {
+  interface MlRemoteService <<Remote>> {
+    +{static} DEFAULT_BIND_NAME : String
+    +{static} MAX_EVENTS_PER_POLL : int
+    +pollEvents(afterSequence : long, maxEvents : int) : PollResult
+    +getCurrentPredictions() : List<PredictionDto>
+    +getStatus() : ServiceStatusDto
+  }
+  class PollResult <<record>> {
+    serverEpoch : long
+    events : List<MlEventDto>
+    nextCursor : long
+    truncated : boolean
+    hasMore : boolean
+  }
+  interface MlEventDto <<sealed>> {
+    +sequence() : long
+    +occurredAt() : Instant
+    +dataType() : String
+  }
+  class AnomalyDto <<record>> {
+    chainId : String
+    chainDescription : String
+    past : PhaseObservationDto
+    current : PhaseObservationDto
+    expected : String
+    observedValue : double
+    unit : String
+    expectedUntil : Instant
+  }
+  class PhaseObservationDto <<record>> {
+    condition : String
+    from : Instant
+    to : Instant
+    samples : int
+  }
+  class PredictionChangeDto <<record>> {
+    previous : PredictionDto
+    current : PredictionDto
+  }
+  class PredictionDto <<record>> {
+    dataType : String
+    binLower : double
+    binUpper : double
+    mostLikelyValue : double
+    confidence : double
+    sampleCount : int
+    unit : String
+  }
+  class ServiceStatusDto <<record>> {
+    serviceId : String
+    serverEpoch : long
+    startedAt : Instant
+    dataTypes : List<String>
+    fogStatus : Map<String, String>
+    queueSize : int
+    droppedJobs : long
+    lastEventSequence : long
+  }
+  MlEventDto <|.. AnomalyDto
+  MlEventDto <|.. PredictionChangeDto
+  PollResult o-- MlEventDto
+}
+
+package "at.ac.univie.dse.iot.msml" {
+  class MlApplication {
+    +{static} main(args : String[]) : void
+  }
+  class MlService extends AbstractMicroService {
+    #initialize(config : MlConfig) : void
+    #startComponents() : void
+    #stopComponents() : void
+    ~status() : ServiceStatusDto
+  }
+  class MlConfig <<record>> {
+    serviceId : String
+    fogNodes : List<FogEndpoint>
+    udp : FogClientConfig
+    workers : WorkerConfig
+    timeSeriesRetentionSeconds : long
+    anomaly : AnomalyConfig
+    prediction : PredictionConfig
+    events : EventsConfig
+    rmi : RmiConfig
+  }
+}
+
+package "at.ac.univie.dse.iot.msml.ingest" {
+  class FogClient {
+    +start() : void
+    +close() : void
+    +localPort() : int
+    +statusSnapshot() : Map<String, String>
+    +status(fogId : String) : SubscriptionStatus
+    ~tick() : void
+    ~handle(message : FogMessage, source : InetSocketAddress) : void
+  }
+  interface AggregateListener {
+    +onAggregate(fogId : String, aggregate : AggregatedValue, receivedAt : Instant) : void
+  }
+  class FogSubscriptionState {
+    status : SubscriptionStatus
+    subscriptionId : String
+    fogEpoch : long
+    lastSequence : long
+    leaseExpiresAt : long
+  }
+  enum SubscriptionStatus {
+    PENDING
+    ACTIVE
+    EXPIRED
+  }
+  class FogEndpoint <<record>> {
+    id : String
+    host : String
+    port : int
+  }
+  class FogClientConfig <<record>> {
+    bindHost : String
+    callbackPort : int
+    callbackHost : String
+    leaseMs : long
+    subscribeRetryMaxMs : long
+  }
+}
+
+package "at.ac.univie.dse.iot.msml.jobs" {
+  interface Job {
+    +execute() : void
+    +name() : String
+  }
+  class JobQueue {
+    +submit(job : Job) : boolean
+    ~take() : Job
+    +size() : int
+    +droppedCount() : long
+  }
+  class WorkerPool {
+    +start() : void
+    +stop(timeout : Duration) : void
+    +executedCount() : long
+    +failedCount() : long
+  }
+  class MlJobs {
+    +submitIngest(aggregate : AggregatedValue, receivedAt : Instant) : boolean
+    +submitExpectationCheck() : boolean
+    ~submitDetection(dataType : DataType) : void
+  }
+  class IngestAggregateJob <<record>> implements Job
+  class DetectAnomaliesJob <<record>> implements Job
+  class UpdatePredictionJob <<record>> implements Job
+  class ExpectationTimeoutJob <<record>> implements Job
+  class WorkerConfig <<record>> {
+    threads : int
+    queueCapacity : int
+  }
+}
+
+package "at.ac.univie.dse.iot.msml.data" {
+  class TimeSeriesStore {
+    +append(dataType : DataType, unit : Unit, at : Instant, value : double) : void
+    +range(dataType : DataType, from : Instant, to : Instant) : List<DataPoint>
+    +latest(dataType : DataType) : Optional<DataPoint>
+    +unitOf(dataType : DataType) : Optional<Unit>
+    +dataTypes() : Set<DataType>
+  }
+  class DataPoint <<record>> {
+    at : Instant
+    value : double
+  }
+}
+
+package "at.ac.univie.dse.iot.msml.anomaly" {
+  class AnomalyDetector {
+    +evaluate(dataType : DataType, now : Instant) : List<Anomaly>
+    +evaluateAll(now : Instant) : List<Anomaly>
+    +openExpectation(chainId : String) : Optional<Expectation>
+  }
+  class BehaviourChain <<record>> {
+    id : String
+    description : String
+    past : Phase
+    current : Phase
+    future : FuturePhase
+    +involves(dataType : DataType) : boolean
+    +spanSeconds() : long
+  }
+  class Phase <<record>> {
+    dataType : DataType
+    condition : ThresholdCondition
+    fromSec : long
+    toSec : long
+    +startAt(now : Instant) : Instant
+    +endAt(now : Instant) : Instant
+  }
+  class FuturePhase <<record>> {
+    dataType : DataType
+    condition : ThresholdCondition
+    withinSec : long
+    +within() : Duration
+  }
+  interface Condition {
+    +test(value : double) : boolean
+    +describe(dataType : DataType) : String
+  }
+  class ThresholdCondition <<record>> implements Condition {
+    op : Operator
+    value : double
+  }
+  enum Operator {
+    GT
+    GE
+    LT
+    LE
+    +symbol() : String
+  }
+  class Expectation <<record>> {
+    chain : BehaviourChain
+    createdAt : Instant
+    deadline : Instant
+    past : PhaseObservation
+    current : PhaseObservation
+  }
+  class PhaseObservation <<record>> {
+    condition : String
+    from : Instant
+    to : Instant
+    samples : int
+  }
+  class Anomaly <<record>> {
+    expectation : Expectation
+    observedValue : double
+    observedAt : Instant
+    unit : Unit
+    +chain() : BehaviourChain
+    +expected() : String
+  }
+  class AnomalyConfig <<record>> {
+    minSamplesPerPhase : int
+    chains : List<BehaviourChain>
+    +maxSpanSeconds() : long
+  }
+}
+
+package "at.ac.univie.dse.iot.msml.prediction" {
+  class HistogramPredictor {
+    +update(dataType : DataType, unit : Unit, value : double) : Optional<PredictionChange>
+    +current(dataType : DataType) : Optional<Prediction>
+    +currentAll() : List<Prediction>
+    +dataTypes() : Set<DataType>
+  }
+  class Histogram {
+    +add(value : double) : void
+    +mode(tieBreakValue : double) : Optional<Bin>
+    +sampleCount() : int
+  }
+  class Bin <<record>> {
+    index : long
+    lower : double
+    upper : double
+    count : int
+    +centre() : double
+  }
+  class Prediction <<record>> {
+    dataType : DataType
+    unit : Unit
+    binLower : double
+    binUpper : double
+    mostLikelyValue : double
+    confidence : double
+    sampleCount : int
+  }
+  class PredictionChange <<record>> {
+    dataType : DataType
+    previous : Prediction
+    current : Prediction
+  }
+  class FreedmanDiaconis {
+    +{static} binWidth(samples : double[]) : double
+  }
+  class HistogramConfig <<record>> {
+    dataType : DataType
+    binWidth : double
+    origin : double
+    maxSamples : int
+  }
+  class PredictionConfig <<record>> {
+    histograms : List<HistogramConfig>
+  }
+}
+
+package "at.ac.univie.dse.iot.msml.events" {
+  class EventLog {
+    +append(anomaly : Anomaly) : AnomalyEvent
+    +append(change : PredictionChange) : PredictionChangedEvent
+    +since(cursor : long, max : int) : Page
+    +lastSequence() : long
+    +epoch() : long
+  }
+  class Page <<record>> {
+    events : List<MlEvent>
+    nextCursor : long
+    truncated : boolean
+    hasMore : boolean
+  }
+  interface MlEvent <<sealed>> {
+    +sequence() : long
+    +occurredAt() : Instant
+    +dataType() : DataType
+  }
+  class AnomalyEvent <<record>> implements MlEvent
+  class PredictionChangedEvent <<record>> implements MlEvent
+  class EventsConfig <<record>> {
+    retention : int
+  }
+}
+
+package "at.ac.univie.dse.iot.msml.rmi" {
+  class MlRmiServer {
+    +start() : void
+    +stop() : void
+  }
+  class MlRemoteServiceImpl implements MlRemoteService
+  class DtoMapper {
+    ~{static} toDto(event : MlEvent) : MlEventDto
+    ~{static} toDto(prediction : Prediction) : PredictionDto
+  }
+  class RmiConfig <<record>> {
+    hostname : String
+    registryPort : int
+    objectPort : int
+    bindName : String
+  }
+}
+
+MlApplication ..> MlService : runs
+MlService *-- FogClient
+MlService *-- WorkerPool
+MlService *-- JobQueue
+MlService *-- MlJobs
+MlService *-- TimeSeriesStore
+MlService *-- EventLog
+MlService *-- HistogramPredictor
+MlService *-- MlRmiServer
+MlService ..> MlConfig
+FogClient --> AggregateListener
+FogClient o-- "1..*" FogSubscriptionState
+FogSubscriptionState --> SubscriptionStatus
+FogSubscriptionState --> FogEndpoint
+WorkerPool --> JobQueue : take
+MlJobs --> JobQueue : submit
+MlJobs ..> Job : creates
+MlJobs --> TimeSeriesStore
+MlJobs --> AnomalyDetector
+MlJobs --> HistogramPredictor
+MlJobs --> EventLog
+AnomalyDetector --> TimeSeriesStore
+AnomalyDetector o-- BehaviourChain
+AnomalyDetector ..> Expectation
+AnomalyDetector ..> Anomaly
+BehaviourChain *-- Phase
+BehaviourChain *-- FuturePhase
+Phase --> ThresholdCondition
+FuturePhase --> ThresholdCondition
+ThresholdCondition +-- Operator
+HistogramPredictor o-- Histogram
+Histogram ..> Bin
+HistogramPredictor ..> PredictionChange
+EventLog o-- MlEvent
+EventLog ..> Page
+MlRmiServer --> MlRemoteServiceImpl
+MlRemoteServiceImpl --> EventLog
+MlRemoteServiceImpl --> HistogramPredictor
+MlRemoteServiceImpl ..> DtoMapper
+@enduml

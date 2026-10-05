@@ -1,0 +1,128 @@
+@startuml clnt_ml
+title clnt_ml – standalone command line client, polls MS ML over Java RMI
+skinparam classAttributeIconSize 0
+hide empty members
+set separator none
+
+package "other modules" {
+  abstract class AbstractMicroService
+  interface MlRemoteService
+  interface MlEventDto
+  class ServiceStatusDto <<record>>
+}
+
+package "JDK" {
+  abstract class RMISocketFactory <<external>>
+}
+
+package "at.ac.univie.dse.iot.clntml" {
+  class MlClientApplication {
+    +{static} main(args : String[]) : void
+    ~{static} run(args : String[], out : PrintStream, err : PrintStream) : int
+  }
+  class ClientArguments <<record>> {
+    configFile : Path
+    pollIntervalMs : Long
+    once : boolean
+    status : boolean
+    cursorFile : Path
+    +{static} parse(args : String[]) : ClientArguments
+  }
+  class ClientConfig <<record>> {
+    serviceId : String
+    pollIntervalMs : long
+    maxEventsPerPoll : int
+    connectTimeoutMs : long
+    reconnectBackoffMaxMs : long
+    endpoints : List<EndpointConfig>
+    +withPollInterval(intervalMs : long) : ClientConfig
+  }
+  class EndpointConfig <<record>> {
+    name : String
+    host : String
+    registryPort : int
+    bindName : String
+    +url() : String
+  }
+  class MlClient extends AbstractMicroService {
+    +runOnce(config : ClientConfig) : int
+    +runStatus(config : ClientConfig) : int
+    #initialize(config : ClientConfig) : void
+    #startComponents() : void
+    #stopComponents() : void
+  }
+  class PollingScheduler {
+    +start(interval : Duration, threadFactory : ThreadFactory) : void
+    +pollAllOnce() : boolean
+    +stop() : void
+    +pollers() : List<EndpointPoller>
+  }
+  class EndpointPoller {
+    +pollOnce() : boolean
+    +printStatus() : boolean
+    +cursor() : PollCursor
+    +name() : String
+  }
+  class MlEndpointConnection {
+    +service() : Optional<MlRemoteService>
+    +failed() : long
+    +succeeded() : boolean
+    +endpoint() : EndpointConfig
+  }
+  interface StubLocator {
+    +locate(endpoint : EndpointConfig) : MlRemoteService
+  }
+  class PollCursor {
+    +position() : long
+    +adoptEpoch(epoch : long) : boolean
+    +advanceTo(nextCursor : long) : void
+    +snapshot() : Snapshot
+  }
+  class Snapshot <<record>> {
+    serverEpoch : long
+    position : long
+  }
+  class CursorStore {
+    +load() : Map<String, Snapshot>
+    +save(cursors : Map<String, Snapshot>) : void
+  }
+  class ConsoleRenderer {
+    +events(endpoint : String, events : List<MlEventDto>) : void
+    +nothingNew(endpoint : String) : void
+    +info(endpoint : String, message : String) : void
+    +warn(endpoint : String, message : String) : void
+    +status(endpoint : String, url : String, status : ServiceStatusDto) : void
+  }
+  interface EventFormatter<T extends MlEventDto> {
+    +kind() : String
+    +format(event : T) : String
+    +{static} value(value : double, unit : String) : String
+    +{static} symbol(unit : String) : String
+  }
+  class AnomalyFormatter implements EventFormatter
+  class PredictionChangeFormatter implements EventFormatter
+  class TimeoutRmiSocketFactory extends RMISocketFactory {
+    ~{static} install(connectTimeoutMs : long, responseTimeoutMs : long) : void
+    +createSocket(host : String, port : int) : Socket
+    +createServerSocket(port : int) : ServerSocket
+  }
+}
+
+MlClientApplication ..> ClientArguments : parses
+MlClientApplication ..> MlClient : runs
+MlClientApplication ..> TimeoutRmiSocketFactory : installs
+ClientConfig *-- "1..*" EndpointConfig
+MlClient *-- PollingScheduler
+MlClient *-- ConsoleRenderer
+MlClient --> CursorStore
+PollingScheduler o-- "1..*" EndpointPoller
+EndpointPoller --> MlEndpointConnection
+EndpointPoller --> PollCursor
+EndpointPoller --> ConsoleRenderer
+MlEndpointConnection --> StubLocator
+MlEndpointConnection --> MlRemoteService : RMI
+PollCursor +-- Snapshot
+CursorStore ..> Snapshot
+ConsoleRenderer --> AnomalyFormatter
+ConsoleRenderer --> PredictionChangeFormatter
+@enduml

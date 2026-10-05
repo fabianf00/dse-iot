@@ -1,0 +1,124 @@
+@startuml ms_iot
+title ms_iot – simulated IoT device (SIMI: one implementation, one config file per instance)
+skinparam classAttributeIconSize 0
+hide empty members
+set separator none
+
+package "other modules" {
+  abstract class AbstractMicroService
+  interface CommunicationFramework
+  class CfConfig <<record>>
+}
+
+package "at.ac.univie.dse.iot.msiot" {
+  class IotDeviceApplication {
+    +{static} main(args : String[]) : void
+  }
+  class IotDeviceService extends AbstractMicroService {
+    -cf : CommunicationFramework
+    -publisher : SensorPublisher
+    #initialize(config : IotConfig) : void
+    #startComponents() : void
+    #stopComponents() : void
+    ~publishedCount() : long
+  }
+  class IotConfig <<record>> {
+    serviceId : String
+    sensor : SensorConfig
+    cf : CfConfig
+  }
+  class SensorConfig <<record>> {
+    dataType : DataType
+    unit : Unit
+    publishIntervalMs : long
+    generator : GeneratorConfig
+    anomalyInjection : AnomalyInjectionConfig
+  }
+  class GeneratorConfig <<record>> {
+    kind : Kind
+    base : double
+    amplitude : double
+    periodSeconds : double
+    phaseSeconds : double
+    noiseStdDev : double
+    stepStdDev : double
+    meanReversion : double
+    seed : Long
+    min : Double
+    max : Double
+    +{static} constant(value : double) : GeneratorConfig
+  }
+  enum Kind {
+    CONSTANT
+    SINE
+    RANDOM_WALK
+  }
+  class AnomalyInjectionConfig <<record>> {
+    enabled : boolean
+    probabilityPerReading : double
+    offset : double
+    durationSeconds : long
+  }
+  class ValueGeneratorFactory {
+    +{static} create(sensor : SensorConfig) : ValueGenerator
+    +{static} rangeOf(config : GeneratorConfig) : ValueRange
+  }
+  class SensorPublisher {
+    +start() : void
+    +stop() : void
+    +publishedCount() : long
+    ~publishOnce() : void
+  }
+}
+
+package "at.ac.univie.dse.iot.msiot.sensor" {
+  interface Sensor {
+    +read() : Optional<SensorReading>
+  }
+  class SimulatedSensor implements Sensor {
+    -deviceId : String
+    -dataType : DataType
+    -unit : Unit
+    -generator : ValueGenerator
+    -range : ValueRange
+    -clock : Clock
+    -bootId : UUID
+    -nextSequence : long
+    +bootId() : UUID
+  }
+}
+
+package "at.ac.univie.dse.iot.msiot.generator" {
+  interface ValueGenerator {
+    +next(at : Instant) : double
+  }
+  class ConstantGenerator implements ValueGenerator
+  class SineWaveGenerator implements ValueGenerator
+  class RandomWalkGenerator implements ValueGenerator
+  class AnomalyInjectingGenerator implements ValueGenerator {
+    -delegate : ValueGenerator
+    +isAnomalyActive() : boolean
+  }
+  class ValueRange <<record>> {
+    min : Double
+    max : Double
+    +clamp(value : double) : double
+  }
+}
+
+IotDeviceApplication ..> IotDeviceService : runs
+IotDeviceService *-- SensorPublisher
+IotDeviceService --> CommunicationFramework
+IotConfig *-- SensorConfig
+IotConfig *-- CfConfig
+SensorConfig *-- GeneratorConfig
+SensorConfig *-- AnomalyInjectionConfig
+GeneratorConfig +-- Kind
+SensorPublisher --> Sensor
+SensorPublisher --> CommunicationFramework : publish(sensor.<type>)
+SimulatedSensor --> ValueGenerator
+SimulatedSensor --> ValueRange
+RandomWalkGenerator --> ValueRange
+AnomalyInjectingGenerator o-- ValueGenerator : decorates
+ValueGeneratorFactory ..> ValueGenerator : creates
+@enduml

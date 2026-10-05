@@ -1,0 +1,160 @@
+@startuml ms_fog
+title ms_fog – fog node: windowed aggregation of one data type, UDP Fog Aggregate API
+skinparam classAttributeIconSize 0
+hide empty members
+set separator none
+
+package "other modules" {
+  abstract class AbstractMicroService
+  interface CommunicationFramework
+  interface MessageListener
+  class CfConfig <<record>>
+  class FogMessageCodec
+}
+
+package "JDK" {
+  class Exception <<external>>
+  interface Consumer <<external>>
+}
+
+package "at.ac.univie.dse.iot.msfog" {
+  class FogNodeApplication {
+    +{static} main(args : String[]) : void
+  }
+  class FogNodeService extends AbstractMicroService {
+    -cf : CommunicationFramework
+    -collector : SensorReadingCollector
+    -aggregation : AggregationScheduler
+    -subscriptions : SubscriptionManager
+    -udp : UdpServer
+    -publisher : AggregatePublisher
+    #initialize(config : FogConfig) : void
+    #startComponents() : void
+    #stopComponents() : void
+  }
+  class FogConfig <<record>> {
+    serviceId : String
+    dataType : DataType
+    unit : Unit
+    aggregationMode : AggregationMode
+    windowMs : long
+    emptyWindowWarningAfter : int
+    udp : UdpConfig
+    cf : CfConfig
+  }
+  class UdpConfig <<record>> {
+    bindHost : String
+    port : int
+    maxLeaseMs : long
+    maxSubscribers : int
+  }
+}
+
+package "at.ac.univie.dse.iot.msfog.aggregation" {
+  class SensorReadingCollector implements MessageListener {
+    -current : AtomicReference<AggregationWindow>
+    +onMessage(message : CfMessage) : void
+    +add(reading : SensorReading) : void
+    +closeWindow() : Snapshot
+    +acceptedCount() : long
+    +rejectedCount() : long
+  }
+  class AggregationWindow {
+    -openedAt : long
+    -values : List<Double>
+    -devices : Set<String>
+    -closed : boolean
+    +add(reading : SensorReading) : boolean
+    +close(closedAt : long) : Snapshot
+  }
+  class Snapshot <<record>> {
+    openedAt : long
+    closedAt : long
+    values : List<Double>
+    deviceCount : int
+  }
+  interface AggregationStrategy {
+    +aggregate(values : List<Double>) : OptionalDouble
+    +mode() : AggregationMode
+  }
+  class AggregationStrategies {
+    +{static} forMode(mode : AggregationMode) : AggregationStrategy
+  }
+  class Avg implements AggregationStrategy
+  class Max implements AggregationStrategy
+  class Min implements AggregationStrategy
+  class AggregationScheduler {
+    -consecutiveEmptyWindows : int
+    +start(window : Duration, threadFactory : ThreadFactory) : void
+    +stop() : void
+    ~aggregateAndPublish() : AggregatedValue
+  }
+}
+
+package "at.ac.univie.dse.iot.msfog.udp" {
+  class UdpServer {
+    -socket : DatagramSocket
+    +start() : void
+    +send(datagram : byte[], target : InetSocketAddress) : void
+    +close() : void
+  }
+  class FogRequestHandler {
+    +handle(data : byte[], length : int, source : InetSocketAddress) : FogMessage
+  }
+  class StreamDescription <<record>> {
+    dataType : DataType
+    unit : Unit
+    aggregationMode : AggregationMode
+    windowMs : long
+    fogEpoch : long
+  }
+  class SubscriptionManager {
+    +subscribe(subscriberId : String, callback : InetSocketAddress, leaseMillis : long) : FogSubscription
+    +renew(subscriptionId : String, leaseMillis : long) : Optional<FogSubscription>
+    +unsubscribe(subscriptionId : String) : boolean
+    +active() : List<FogSubscription>
+    +sweepExpired() : void
+  }
+  class TooManySubscribersException extends Exception
+  class FogSubscription <<record>> {
+    subscriptionId : String
+    subscriberId : String
+    callback : InetSocketAddress
+    leaseExpiresAt : long
+    +isActive(now : long) : boolean
+  }
+  class AggregatePublisher implements Consumer {
+    -sequence : AtomicLong
+    -fogEpoch : long
+    +accept(value : AggregatedValue) : void
+    +fogEpoch() : long
+  }
+}
+
+FogNodeApplication ..> FogNodeService : runs
+FogConfig *-- UdpConfig
+FogConfig *-- CfConfig
+FogNodeService *-- SensorReadingCollector
+FogNodeService *-- AggregationScheduler
+FogNodeService *-- SubscriptionManager
+FogNodeService *-- UdpServer
+FogNodeService *-- AggregatePublisher
+FogNodeService --> CommunicationFramework : subscribe(sensor.<type>)
+SensorReadingCollector *-- AggregationWindow
+AggregationWindow ..> Snapshot
+AggregationStrategies +-- Avg
+AggregationStrategies +-- Max
+AggregationStrategies +-- Min
+AggregationScheduler --> SensorReadingCollector
+AggregationScheduler --> AggregationStrategy
+AggregationScheduler --> AggregatePublisher : output
+AggregatePublisher --> SubscriptionManager
+AggregatePublisher --> UdpServer : send
+AggregatePublisher --> FogMessageCodec
+UdpServer --> FogRequestHandler
+FogRequestHandler --> SubscriptionManager
+FogRequestHandler --> StreamDescription
+FogRequestHandler --> FogMessageCodec
+SubscriptionManager o-- "0..*" FogSubscription
+SubscriptionManager +-- TooManySubscribersException
+@enduml

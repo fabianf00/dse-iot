@@ -1,0 +1,223 @@
+@startuml common
+title common – configuration, JSON, models, Fog Aggregate API messages, service lifecycle
+skinparam classAttributeIconSize 0
+hide empty members
+set separator none
+
+package "JDK" {
+  class RuntimeException <<external>>
+  class Exception <<external>>
+  interface ThreadFactory <<external>>
+}
+
+package "at.ac.univie.dse.iot.common.config" {
+  interface ValidatableConfig {
+    +validate(validator : ConfigValidator) : void
+  }
+  interface ServiceConfig extends ValidatableConfig {
+    +serviceId() : String
+  }
+  class ConfigValidator {
+    +check(condition : boolean, field : String, problem : String) : ConfigValidator
+    +notNull(field : String, value : Object) : ConfigValidator
+    +notBlank(field : String, value : String) : ConfigValidator
+    +notEmpty(field : String, values : Collection<?>) : ConfigValidator
+    +positive(field : String, value : long) : ConfigValidator
+    +nonNegative(field : String, value : long) : ConfigValidator
+    +inRange(field : String, value : long, min : long, max : long) : ConfigValidator
+    +port(field : String, port : int) : ConfigValidator
+    +nested(field : String, child : ValidatableConfig) : ConfigValidator
+    +each(field : String, children : List<ValidatableConfig>) : ConfigValidator
+    +hasProblems() : boolean
+    +problems() : List<String>
+    +throwIfInvalid(source : String) : void
+  }
+  class ConfigLoader {
+    +load(file : Path, type : Class<C>) : C
+    +parse(json : String, type : Class<C>, sourceName : String) : C
+  }
+  class ConfigException extends RuntimeException {
+    +{static} invalid(source : String, problems : List<String>) : ConfigException
+    +problems() : List<String>
+  }
+}
+
+package "at.ac.univie.dse.iot.common.json" {
+  class JsonCodec {
+    +{static} shared() : JsonCodec
+    +toJson(value : Object) : String
+    +toBytes(value : Object) : byte[]
+    +toTree(value : Object) : JsonNode
+    +fromJson(json : String, type : Class<T>) : T
+    +fromBytes(bytes : byte[], offset : int, length : int, type : Class<T>) : T
+    +readTree(bytes : byte[], offset : int, length : int) : JsonNode
+    +fromTree(node : JsonNode, type : Class<T>) : T
+    +copyMapper() : ObjectMapper
+  }
+  class JsonCodecException extends RuntimeException
+}
+
+package "at.ac.univie.dse.iot.common.model" {
+  class DataType <<record>> {
+    value : String
+    +{static} of(value : String) : DataType
+  }
+  enum Unit {
+    CELSIUS
+    PPM
+    PERCENT
+    HECTOPASCAL
+    +symbol() : String
+  }
+  enum AggregationMode {
+    AVG
+    MAX
+    MIN
+  }
+  class SensorReading <<record>> {
+    deviceId : String
+    dataType : DataType
+    unit : Unit
+    value : double
+    sequence : long
+    bootId : UUID
+    measuredAt : long
+  }
+  class AggregatedValue <<record>> {
+    dataType : DataType
+    unit : Unit
+    aggregationMode : AggregationMode
+    windowStart : long
+    windowEnd : long
+    sampleCount : int
+    deviceCount : int
+    value : Double
+    +{static} empty(t : DataType, u : Unit, m : AggregationMode, start : long, end : long) : AggregatedValue
+    +isEmpty() : boolean
+    +optionalValue() : OptionalDouble
+  }
+  class Topics {
+    +{static} SENSOR_PREFIX : String
+    +{static} ALL_SENSORS : String
+    +{static} sensor(dataType : DataType) : String
+  }
+  SensorReading --> DataType
+  SensorReading --> Unit
+  AggregatedValue --> DataType
+  AggregatedValue --> AggregationMode
+}
+
+package "at.ac.univie.dse.iot.common.fogapi" {
+  interface FogMessage <<sealed>> {
+    +{static} VERSION : int
+    +v() : int
+  }
+  class Subscribe <<record>> {
+    requestId : UUID
+    subscriberId : String
+    callbackHost : String
+    callbackPort : int
+    leaseMs : long
+  }
+  class SubscribeAck <<record>> {
+    requestId : UUID
+    subscriptionId : String
+    dataType : DataType
+    unit : Unit
+    aggregationMode : AggregationMode
+    windowMs : long
+    leaseExpiresAt : long
+    fogEpoch : long
+  }
+  class Renew <<record>>
+  class RenewAck <<record>>
+  class Unsubscribe <<record>>
+  class UnsubscribeAck <<record>>
+  class Aggregate <<record>> {
+    fogId : String
+    fogEpoch : long
+    sequence : long
+    +toAggregatedValue() : AggregatedValue
+  }
+  class Error <<record>> {
+    requestId : UUID
+    code : ErrorCode
+    message : String
+  }
+  enum ErrorCode {
+    MALFORMED_REQUEST
+    UNSUPPORTED_VERSION
+    UNKNOWN_SUBSCRIPTION
+    TOO_MANY_SUBSCRIBERS
+  }
+  class FogMessageCodec {
+    +{static} MAX_DATAGRAM_BYTES : int
+    +encode(message : FogMessage) : byte[]
+    +decode(data : byte[], offset : int, length : int) : FogMessage
+  }
+  class FogProtocolException extends Exception {
+    +code() : ErrorCode
+    +requestId() : UUID
+    +toErrorMessage() : Error
+  }
+  FogMessage <|.. Subscribe
+  FogMessage <|.. SubscribeAck
+  FogMessage <|.. Renew
+  FogMessage <|.. RenewAck
+  FogMessage <|.. Unsubscribe
+  FogMessage <|.. UnsubscribeAck
+  FogMessage <|.. Aggregate
+  FogMessage <|.. Error
+  Error --> ErrorCode
+  FogMessageCodec ..> FogMessage
+  FogMessageCodec ..> FogProtocolException : throws
+  FogMessageCodec --> JsonCodec
+}
+
+package "at.ac.univie.dse.iot.common.concurrent" {
+  class NamedThreadFactory implements ThreadFactory {
+    +newThread(task : Runnable) : Thread
+  }
+  class ExecutorUtils {
+    +{static} shutdownGracefully(executor : ExecutorService, timeout : Duration) : boolean
+  }
+}
+
+package "at.ac.univie.dse.iot.common.service" {
+  abstract class AbstractMicroService<C extends ServiceConfig> {
+    +{static} EXIT_OK : int
+    +{static} EXIT_FAILURE : int
+    +{static} EXIT_USAGE : int
+    +{static} EXIT_CONFIG : int
+    #log : Logger
+    +run(args : String[]) : int
+    +run(config : C) : int
+    +start(config : C) : void
+    +stop() : void
+    +awaitTermination() : void
+    +state() : State
+    #config() : C
+    #loadConfig(file : Path) : C
+    #usage() : String
+    #{abstract} initialize(config : C) : void
+    #{abstract} startComponents() : void
+    #{abstract} stopComponents() : void
+  }
+  enum State {
+    NEW
+    STARTING
+    RUNNING
+    STOPPING
+    STOPPED
+    FAILED
+  }
+  class ServiceStartException extends RuntimeException
+  AbstractMicroService --> State
+  AbstractMicroService --> ConfigLoader
+  AbstractMicroService ..> ServiceStartException : throws
+}
+
+ConfigLoader --> JsonCodec
+ConfigLoader ..> ConfigValidator
+ConfigLoader ..> ConfigException : throws
+@enduml
