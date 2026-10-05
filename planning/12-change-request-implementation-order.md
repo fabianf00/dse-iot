@@ -95,3 +95,28 @@ Done when: same tests, all green, no duplicated helpers left.
 2. **Delete semantics:** hard delete (recommended) or soft delete with a "deleted" filter.
 3. **Database:** embedded H2 file (recommended) or a PostgreSQL server (then a Docker
    Compose file for the database would be added).
+
+## Progress notes
+
+**Step 9 – done.** Decisions taken with the recommended options: Javalin, hard delete, embedded H2.
+
+- Parent POM: modules `web_ml`, `test_support`, `intgrtn_tests`. Managed versions: Hibernate ORM
+  7.4.12.Final, H2 2.5.252, Javalin 7.2.3, failsafe 3.5.6 (failsafe in `pluginManagement`, used
+  by `intgrtn_tests`; `-DskipITs` skips it).
+- **Fat JARs changed:** the shade plugin now writes `target/<module>.jar` as a separate file
+  (`outputFile`) instead of replacing the module's artifact. Modules that depend on a service
+  (`intgrtn_tests`) get the plain JAR and no duplicate classes. Paths for the scripts are
+  unchanged (`ms_iot/target/ms_iot.jar`, …).
+- `ms_ml` depends on Hibernate, H2 and Javalin. One Jackson (2.22.3) and one SLF4J (2.0.20) on
+  the classpath; Javalin adds Jetty 12 and the Kotlin standard library. `ms_ml.jar` is 35 MB.
+- Shaded-JAR check (throwaway program in the scratchpad, against `ms_ml.jar`): Hibernate with
+  `PersistenceConfiguration` (no `persistence.xml`), H2 in memory, `hibernate.hbm2ddl.auto=update`,
+  Criteria count with a `like` filter → correct result. Javalin with `JavalinJackson`, a route
+  in `config.routes`, and the CORS plugin (`bundledPlugins.enableCors`) → 200, JSON, correct
+  `Access-Control-Allow-Origin`.
+- Javalin 7 API notes: routes, exception and error handlers are registered in
+  `Javalin.create(config -> config.routes.…)`; CORS via `config.bundledPlugins.enableCors(...)`.
+- For step 11: Hibernate warns "Using built-in connection pool (not intended for production
+  use)". Add a real pool (`hibernate-hikaricp` + HikariCP, or Agroal) when building `Database`.
+- `web_ml` (stub main, shade), `test_support` (empty), `intgrtn_tests` (no main code, empty JAR
+  skipped) build. All 257 existing tests pass.
