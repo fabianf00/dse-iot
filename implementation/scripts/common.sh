@@ -9,12 +9,18 @@ RUN_DIR="$ROOT/run"
 PID_DIR="$RUN_DIR/pids"
 LOG_DIR="$RUN_DIR/logs"
 
-# Start order: ML first, then the fogs, then the devices. The order is not needed for
-# correctness (everything retries), it only avoids warnings while the system comes up.
+# Start order: ML first, then the fogs, then the devices, then the web UI. The order is not
+# needed for correctness (everything retries), it only avoids warnings while the system comes up.
 ML_INSTANCES="ml-1"
 FOG_INSTANCES="fog-temp fog-co2"
 IOT_INSTANCES="iot-temp-1 iot-temp-2 iot-temp-3 iot-co2-1 iot-co2-2 iot-co2-3"
-ALL_INSTANCES="$ML_INSTANCES $FOG_INSTANCES $IOT_INSTANCES"
+WEB_INSTANCES="web-ml"
+ALL_INSTANCES="$ML_INSTANCES $FOG_INSTANCES $IOT_INSTANCES $WEB_INSTANCES"
+
+# URLs for humans and the e2e test; must match config/ml-1.json (rest) and config/web-ml.json.
+REST_URL="http://127.0.0.1:50303/api/v1"
+WEB_URL="http://127.0.0.1:50400/"
+DATA_DIR="$RUN_DIR/data"
 
 CLIENT_JAR="$ROOT/clnt_ml/target/clnt_ml.jar"
 CLIENT_CONFIG="${CLNT_CONFIG:-$CONFIG_DIR/clnt-ml.json}"
@@ -25,6 +31,7 @@ jar_of() {
         ml-*) echo "$ROOT/ms_ml/target/ms_ml.jar" ;;
         fog-*) echo "$ROOT/ms_fog/target/ms_fog.jar" ;;
         iot-*) echo "$ROOT/ms_iot/target/ms_iot.jar" ;;
+        web-*) echo "$ROOT/web_ml/target/web_ml.jar" ;;
         *) return 1 ;;
     esac
 }
@@ -58,7 +65,8 @@ require_java() {
 
 require_jars() {
     local jar missing=0
-    for jar in "$ROOT/ms_ml/target/ms_ml.jar" "$ROOT/ms_fog/target/ms_fog.jar" "$ROOT/ms_iot/target/ms_iot.jar" "$CLIENT_JAR"; do
+    for jar in "$ROOT/ms_ml/target/ms_ml.jar" "$ROOT/ms_fog/target/ms_fog.jar" "$ROOT/ms_iot/target/ms_iot.jar" \
+            "$ROOT/web_ml/target/web_ml.jar" "$CLIENT_JAR"; do
         if [ ! -f "$jar" ]; then
             echo "missing $jar" >&2
             missing=1
@@ -83,7 +91,7 @@ start_instance() {
         echo "  no config for $name: $config" >&2
         return 1
     fi
-    mkdir -p "$PID_DIR" "$LOG_DIR" "$RUN_DIR/data"
+    mkdir -p "$PID_DIR" "$LOG_DIR" "$DATA_DIR"
     # Started from implementation/, so relative paths in configs (e.g. the ML database under
     # run/data) do not depend on the directory the script was called from.
     (cd "$ROOT" && exec nohup java -jar "$jar" "$config" > "$LOG_DIR/$name.log" 2>&1) &
@@ -111,6 +119,17 @@ stop_instance() {
         echo "  stopped $name (pid $pid)"
     fi
     rm -f "$PID_DIR/$name.pid"
+}
+
+# probe <url>: "reachable" if an HTTP GET succeeds within 2 s, otherwise "not reachable".
+probe() {
+    if ! command -v curl >/dev/null 2>&1; then
+        echo "curl not installed"
+    elif curl -sf -o /dev/null -m 2 "$1"; then
+        echo "reachable"
+    else
+        echo "not reachable"
+    fi
 }
 
 # Fails if an instance exited shortly after its start (e.g. invalid config, port in use).

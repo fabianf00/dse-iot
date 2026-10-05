@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Starts the minimum layout: 1 ML, 2 Fog, 6 IoT instances, each as its own background process.
+# Starts the minimum layout: 1 ML, 2 Fog, 6 IoT instances and WEB ML, each as its own
+# background process. ML stores its results in run/data/ (see scripts/reset-data.sh).
 #
 # Usage: scripts/start-all.sh [--demo] [--build]
 #   --demo    use config/demo/<instance>.json where it exists (anomalies about 3 min after start)
@@ -34,6 +35,8 @@ for name in $FOG_INSTANCES; do start_instance "$name" "$demo" || exit 1; done
 sleep 1
 echo "Starting IoT devices ..."
 for name in $IOT_INSTANCES; do start_instance "$name" "$demo" || exit 1; done
+echo "Starting WEB ML ..."
+for name in $WEB_INSTANCES; do start_instance "$name" "$demo" || exit 1; done
 
 sleep 3
 # shellcheck disable=SC2086
@@ -43,7 +46,9 @@ if ! check_started $ALL_INSTANCES; then
 fi
 
 echo
-echo "All 9 instances are running."
+echo "All 10 instances are running."
+echo "  WEB ML:      $WEB_URL"
+echo "  ML REST API: $REST_URL (e.g. curl $REST_URL/anomalies)"
 echo "  scripts/client.sh            poll ML and print anomalies and prediction changes (Ctrl+C to stop)"
 echo "  scripts/client.sh --status   show the state of ML and its fog subscriptions"
 echo "  scripts/status.sh            show which instances are running"

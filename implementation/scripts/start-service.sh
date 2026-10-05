@@ -2,7 +2,7 @@
 # Starts one instance, e.g. after it was stopped or crashed.
 #
 # Usage: scripts/start-service.sh <instance> [--demo]
-#   instances: ml-1, fog-temp, fog-co2, iot-temp-1..3, iot-co2-1..3
+#   instances: ml-1, fog-temp, fog-co2, iot-temp-1..3, iot-co2-1..3, web-ml
 set -u
 source "$(dirname "$0")/common.sh"
 
