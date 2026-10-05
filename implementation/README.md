@@ -13,13 +13,21 @@ Java 17+, Maven (via the included wrapper, no installation needed). All commands
 | `ml_api` | Java RMI API of MS ML (shared by MS ML and the client) | – |
 | `ms_ml` | anomaly detection (behaviour chains) and prediction (histograms), RMI server | `ms_ml/target/ms_ml.jar` |
 | `clnt_ml` | command line client, polls MS ML over RMI | `clnt_ml/target/clnt_ml.jar` |
+| `web_ml` | web UI for current and historic ML results (in progress) | `web_ml/target/web_ml.jar` |
+| `test_support` | shared test helpers: free ports, waiting, CF test peer, fake fog and ML services, UDP and RMI test helpers | – |
+| `intgrtn_tests` | all integration tests (`*IT`), run by maven-failsafe | – |
 
 ## Build and test
 
 ```
-./mvnw clean verify              # build all modules, run all unit and integration tests
+./mvnw clean verify              # build all modules, run unit tests and integration tests
+./mvnw clean verify -DskipITs    # unit tests only (integration tests are skipped)
+./mvnw test                      # unit tests only
 ./mvnw package -DskipTests       # only build the JARs
 ```
+
+Unit tests live in each module (`src/test`). Integration tests live in `intgrtn_tests` and keep the
+package of the code they test, so they can use package-private test hooks.
 
 ## Run the minimum layout (1 ML, 2 Fog, 6 IoT on 127.0.0.1)
 

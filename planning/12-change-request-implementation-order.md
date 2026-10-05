@@ -120,3 +120,20 @@ Done when: same tests, all green, no duplicated helpers left.
   use)". Add a real pool (`hibernate-hikaricp` + HikariCP, or Agroal) when building `Database`.
 - `web_ml` (stub main, shade), `test_support` (empty), `intgrtn_tests` (no main code, empty JAR
   skipped) build. All 257 existing tests pass.
+
+**Step 10 – done.**
+
+- `test_support` (main code, used in test scope by `ms_ml`, `clnt_ml` and `intgrtn_tests`): `Ports`
+  (free TCP ranges, TCP and UDP ports), `Waiting` (Awaitility defaults: 15 s, 50 ms poll; `pause`
+  for proving that something does not happen), `CfTestPeer` (passive or scanning CF node that
+  records readings and publishes), `FakeFogServer` and `FakeMlService` (moved with `git mv`),
+  `UdpFogTestClient` (was nested in the fog IT), `RmiTestServer` (export with own registry,
+  stop and restart on the same port).
+- The five integration tests moved to `intgrtn_tests` as `CfOverlayIT`, `IotDeviceIT`,
+  `FogNodeIT`, `MlServiceIT`, `MlClientIT`, in their original packages. They use the shared
+  helpers; the five copies of the port helpers, the nested UDP client, the RMI start/stop code
+  and the sink/publisher setup are gone.
+- Unit tests stay in the modules (233); integration tests run in failsafe (24). Total unchanged (257).
+  The 24 ITs passed three times in a row in one JVM.
+- `intgrtn_tests` has no main code: empty JAR skipped, and the compiler's incremental check is
+  off there (it warned about the missing `target/classes`).
