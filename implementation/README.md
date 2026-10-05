@@ -11,9 +11,9 @@ Java 17+, Maven (via the included wrapper, no installation needed). All commands
 | `ms_iot` | simulated IoT device, publishes sensor readings through the CF | `ms_iot/target/ms_iot.jar` |
 | `ms_fog` | fog node, aggregates one data type per window, serves aggregates over UDP | `ms_fog/target/ms_fog.jar` |
 | `ml_api` | Java RMI API of MS ML (shared by MS ML and the client) | – |
-| `ms_ml` | anomaly detection (behaviour chains) and prediction (histograms), RMI server | `ms_ml/target/ms_ml.jar` |
+| `ms_ml` | anomaly detection (behaviour chains) and prediction (histograms), RMI server, result history (H2/JPA) and REST API | `ms_ml/target/ms_ml.jar` |
 | `clnt_ml` | command line client, polls MS ML over RMI | `clnt_ml/target/clnt_ml.jar` |
-| `web_ml` | web UI for current and historic ML results (in progress) | `web_ml/target/web_ml.jar` |
+| `web_ml` | web UI for current and historic ML results (static files + Chart.js, talks to the ML REST API) | `web_ml/target/web_ml.jar` |
 | `test_support` | shared test helpers: free ports, waiting, CF test peer, fake fog and ML services, UDP and RMI test helpers | – |
 | `intgrtn_tests` | all integration tests (`*IT`), run by maven-failsafe | – |
 
@@ -49,13 +49,41 @@ scripts/stop-service.sh <instance>         # stop one instance
 
 | Instance | Config | Ports |
 |---|---|---|
-| ml-1 | `config/ml-1.json` | UDP 50301 (aggregates), RMI registry 1099, RMI object 50302 |
+| ml-1 | `config/ml-1.json` | UDP 50301 (aggregates), RMI registry 1099, RMI object 50302, REST 50303 |
+| web-ml | `config/web-ml.json` | HTTP 50400 |
 | fog-temp / fog-co2 | `config/fog-temp.json`, `config/fog-co2.json` | CF TCP 50121 / 50122, UDP 50201 / 50202 |
 | iot-temp-1..3 | `config/iot-temp-*.json` | CF TCP 50101–50103 |
 | iot-co2-1..3 | `config/iot-co2-*.json` | CF TCP 50111–50113 |
 | client | `config/clnt-ml.json` | – |
 
 CF peers find each other by scanning `127.0.0.1:50100–50129`.
+
+## WEB ML
+
+```
+java -jar web_ml/target/web_ml.jar config/web-ml.json    # then open http://127.0.0.1:50400/
+```
+
+The browser calls the ML REST API (`http://127.0.0.1:50303/api/v1`) directly, so ML must be
+running and allow the UI's origin (`rest.allowedOrigins` in `config/ml-1.json`). WEB ML itself
+only serves the static UI and `/config.json`.
+
+- **Live:** current prediction per data type, prediction history of the last hour (most likely
+  value as a step line, bin as a band, anomalies as red crosses), latest anomalies.
+- **History:** filter (kind, data types, chain, period, commented), paged table, chart of the
+  period, details with comments (add/edit/delete), delete one or all matching.
+- The filter and the selected result live in the URL (bookmarkable). Nothing is stored in the
+  browser.
+
+Manual check list:
+
+1. The live charts update every 5 s while the demo layout runs.
+2. Set a filter in History, reload the page: the filter and the results are the same.
+3. Add, edit and delete a comment. A comment with `<script>` shows as plain text.
+4. Delete one result. Set a filter and use "Delete all matching". Without a filter the button is
+   disabled.
+5. Stop ML (`scripts/stop-service.sh ml-1`): a banner "unreachable, retrying in N s" appears and
+   the last data stays. Start ML again: the banner disappears without a reload.
 
 ## End-to-end test
 
