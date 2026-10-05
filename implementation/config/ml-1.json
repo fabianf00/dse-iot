@@ -1,0 +1,44 @@
+{
+  "serviceId": "ml-1",
+  "fogNodes": [
+    { "id": "fog-temp", "host": "127.0.0.1", "port": 50201 },
+    { "id": "fog-co2", "host": "127.0.0.1", "port": 50202 }
+  ],
+  "udp": { "callbackPort": 50301, "leaseMs": 30000 },
+  "workers": { "threads": 4, "queueCapacity": 1000 },
+  "timeSeriesRetentionSeconds": 3600,
+  "anomaly": {
+    "minSamplesPerPhase": 2,
+    "chains": [
+      {
+        "id": "temp-sudden-drop",
+        "description": "A warm room stays warm; a drop indicates an open window or a heating failure",
+        "past":    { "dataType": "temperature", "condition": { "op": "GT", "value": 20.0 }, "fromSec": 120, "toSec": 60 },
+        "current": { "dataType": "temperature", "condition": { "op": "GT", "value": 20.0 }, "fromSec": 60, "toSec": 0 },
+        "future":  { "dataType": "temperature", "condition": { "op": "GT", "value": 20.0 }, "withinSec": 60 }
+      },
+      {
+        "id": "co2-empty-room",
+        "description": "Low CO2 (unoccupied room) stays low; a spike indicates unexpected occupancy",
+        "past":    { "dataType": "co2", "condition": { "op": "LT", "value": 700.0 }, "fromSec": 120, "toSec": 60 },
+        "current": { "dataType": "co2", "condition": { "op": "LT", "value": 700.0 }, "fromSec": 60, "toSec": 0 },
+        "future":  { "dataType": "co2", "condition": { "op": "LT", "value": 700.0 }, "withinSec": 60 }
+      },
+      {
+        "id": "ventilation-effect",
+        "description": "Bad air followed by cooling (window opened) should be followed by CO2 recovery",
+        "past":    { "dataType": "co2", "condition": { "op": "GT", "value": 1000.0 }, "fromSec": 120, "toSec": 60 },
+        "current": { "dataType": "temperature", "condition": { "op": "LT", "value": 19.0 }, "fromSec": 60, "toSec": 0 },
+        "future":  { "dataType": "co2", "condition": { "op": "LT", "value": 1000.0 }, "withinSec": 120 }
+      }
+    ]
+  },
+  "prediction": {
+    "histograms": [
+      { "dataType": "temperature", "binWidth": 0.41, "origin": 0.0, "maxSamples": 500 },
+      { "dataType": "co2", "binWidth": 11.6, "origin": 0.0, "maxSamples": 500 }
+    ]
+  },
+  "events": { "retention": 10000 },
+  "rmi": { "hostname": "127.0.0.1", "registryPort": 1099, "objectPort": 50302, "bindName": "MlService" }
+}
