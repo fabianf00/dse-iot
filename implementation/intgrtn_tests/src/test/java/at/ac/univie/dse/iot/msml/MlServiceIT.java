@@ -4,7 +4,6 @@ import static at.ac.univie.dse.iot.testsupport.Waiting.waiting;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import at.ac.univie.dse.iot.common.config.ConfigLoader;
 import at.ac.univie.dse.iot.common.model.DataType;
 import at.ac.univie.dse.iot.common.model.Unit;
 import at.ac.univie.dse.iot.common.service.AbstractMicroService;
@@ -15,12 +14,9 @@ import at.ac.univie.dse.iot.mlapi.PollResult;
 import at.ac.univie.dse.iot.mlapi.PredictionChangeDto;
 import at.ac.univie.dse.iot.mlapi.ServiceStatusDto;
 import at.ac.univie.dse.iot.testsupport.FakeFogServer;
-import at.ac.univie.dse.iot.testsupport.Ports;
 import at.ac.univie.dse.iot.testsupport.Waiting;
-import java.rmi.registry.LocateRegistry;
 import java.time.Duration;
 import java.util.List;
-import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -35,6 +31,7 @@ class MlServiceIT {
     private static final DataType CO2 = DataType.of("co2");
     private static final long ROUND_MS = 250;
 
+    private MlTestSystem system;
     private FakeFogServer temperatureFog;
     private FakeFogServer co2Fog;
     private MlService ml;
@@ -42,44 +39,16 @@ class MlServiceIT {
 
     @BeforeEach
     void setUp() throws Exception {
-        temperatureFog = new FakeFogServer("fog-temp", TEMPERATURE, Unit.CELSIUS);
-        co2Fog = new FakeFogServer("fog-co2", CO2, Unit.PPM);
-        int registryPort = Ports.freeTcpPort();
-        MlConfig config = new ConfigLoader().parse("""
-                {
-                  "serviceId": "ml-test",
-                  "fogNodes": [
-                    { "id": "fog-temp", "host": "127.0.0.1", "port": %d },
-                    { "id": "fog-co2", "host": "127.0.0.1", "port": %d }
-                  ],
-                  "udp": { "bindHost": "127.0.0.1", "callbackPort": %d, "leaseMs": 2000, "subscribeRetryMaxMs": 2000 },
-                  "workers": { "threads": 2, "queueCapacity": 10 },
-                  "timeSeriesRetentionSeconds": 60,
-                  "anomaly": { "minSamplesPerPhase": 2, "chains": [ {
-                    "id": "temp-sudden-drop", "description": "warm stays warm",
-                    "past":    { "dataType": "temperature", "condition": { "op": "GT", "value": 20 }, "fromSec": 4, "toSec": 2 },
-                    "current": { "dataType": "temperature", "condition": { "op": "GT", "value": 20 }, "fromSec": 2, "toSec": 0 },
-                    "future":  { "dataType": "temperature", "condition": { "op": "GT", "value": 20 }, "withinSec": 2 }
-                  } ] },
-                  "prediction": { "histograms": [
-                    { "dataType": "temperature", "binWidth": 1.0, "maxSamples": 20 },
-                    { "dataType": "co2", "binWidth": 50, "maxSamples": 20 }
-                  ] },
-                  "rmi": { "hostname": "127.0.0.1", "registryPort": %d, "bindName": "MlService" },
-                  "storage": { "jdbcUrl": "jdbc:h2:mem:ml-it-%s;DB_CLOSE_DELAY=-1" }
-                }
-                """.formatted(temperatureFog.port(), co2Fog.port(), Ports.freeUdpPort(), registryPort, UUID.randomUUID()),
-                MlConfig.class, "ml-test");
-        ml = new MlService();
-        ml.start(config);
-        client = (MlRemoteService) LocateRegistry.getRegistry("127.0.0.1", registryPort).lookup("MlService");
+        system = MlTestSystem.start(MlTestSystem.memoryDatabase());
+        temperatureFog = system.temperatureFog();
+        co2Fog = system.co2Fog();
+        ml = system.ml();
+        client = system.rmi();
     }
 
     @AfterEach
     void tearDown() {
-        ml.stop();
-        temperatureFog.close();
-        co2Fog.close();
+        system.close();
     }
 
     @Test
