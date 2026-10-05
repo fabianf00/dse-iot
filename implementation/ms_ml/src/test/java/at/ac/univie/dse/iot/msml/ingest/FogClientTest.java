@@ -9,9 +9,8 @@ import at.ac.univie.dse.iot.common.model.AggregatedValue;
 import at.ac.univie.dse.iot.common.model.AggregationMode;
 import at.ac.univie.dse.iot.common.model.DataType;
 import at.ac.univie.dse.iot.common.model.Unit;
-import at.ac.univie.dse.iot.msml.FakeFogServer;
-import java.io.IOException;
-import java.net.DatagramSocket;
+import at.ac.univie.dse.iot.testsupport.FakeFogServer;
+import at.ac.univie.dse.iot.testsupport.Ports;
 import java.net.InetSocketAddress;
 import java.time.Clock;
 import java.time.Duration;
@@ -40,9 +39,9 @@ class FogClientTest {
         }
     }
 
-    private FogClient client(int fogPort, long leaseMs) throws IOException {
+    private FogClient client(int fogPort, long leaseMs) {
         return new FogClient("ml-test", List.of(new FogEndpoint("fog-temp", "127.0.0.1", fogPort)),
-                new FogClientConfig("127.0.0.1", freeUdpPort(), null, leaseMs, 2_000),
+                new FogClientConfig("127.0.0.1", Ports.freeUdpPort(), null, leaseMs, 2_000),
                 (fogId, aggregate, receivedAt) -> received.add(aggregate.value()), Clock.systemUTC());
     }
 
@@ -122,11 +121,5 @@ class FogClientTest {
                 new InetSocketAddress("127.0.0.1", 2));
 
         assertTrue(received.isEmpty());
-    }
-
-    private static int freeUdpPort() throws IOException {
-        try (DatagramSocket socket = new DatagramSocket(new InetSocketAddress("127.0.0.1", 0))) {
-            return socket.getLocalPort();
-        }
     }
 }

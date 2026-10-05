@@ -1,4 +1,4 @@
-package at.ac.univie.dse.iot.clntml;
+package at.ac.univie.dse.iot.testsupport;
 
 import at.ac.univie.dse.iot.mlapi.AnomalyDto;
 import at.ac.univie.dse.iot.mlapi.MlEventDto;
@@ -15,10 +15,14 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
-/** In-memory ML service with the paging, cursor and epoch rules of the real one. */
-final class FakeMlService implements MlRemoteService {
+/**
+ * In-memory {@link MlRemoteService} with the paging, cursor and epoch rules of the real one.
+ * Events get sequence numbers 1, 2, 3 … in the order they are added.
+ */
+public final class FakeMlService implements MlRemoteService {
 
-    static final Instant AT = Instant.parse("2021-11-20T14:03:05Z");
+    /** Time stamp of all fake events. */
+    public static final Instant AT = Instant.parse("2021-11-20T14:03:05Z");
 
     private final long epoch;
     private final List<MlEventDto> events = new ArrayList<>();
@@ -26,29 +30,32 @@ final class FakeMlService implements MlRemoteService {
     private long discardedUpTo;
     private boolean down;
 
-    FakeMlService(long epoch) {
+    public FakeMlService(long epoch) {
         this.epoch = epoch;
     }
 
-    synchronized FakeMlService withPrediction(String dataType, double lower, double upper, String unit) {
+    /** Adds a first-prediction event. */
+    public synchronized FakeMlService withPrediction(String dataType, double lower, double upper, String unit) {
         events.add(new PredictionChangeDto(events.size() + 1, AT, dataType, null,
                 new PredictionDto(dataType, lower, upper, (lower + upper) / 2, 0.34, 480, unit)));
         return this;
     }
 
-    synchronized FakeMlService withAnomaly(String chainId, double observed) {
+    /** Adds a temperature anomaly event of the given chain. */
+    public synchronized FakeMlService withAnomaly(String chainId, double observed) {
         PhaseObservationDto phase = new PhaseObservationDto("temperature > 20.0", AT.minusSeconds(60), AT, 6);
         events.add(new AnomalyDto(events.size() + 1, AT, "temperature", chainId, "warm stays warm", phase, phase,
                 "temperature > 20.0", observed, "CELSIUS", AT.plusSeconds(60)));
         return this;
     }
 
-    synchronized void discardUpTo(long sequence) {
+    /** Simulates the retention limit: events up to {@code sequence} are no longer returned. */
+    public synchronized void discardUpTo(long sequence) {
         discardedUpTo = sequence;
     }
 
     /** From now on, calls fail like calls to an unexported remote object (server stopped). */
-    synchronized void shutDown() {
+    public synchronized void shutDown() {
         down = true;
     }
 

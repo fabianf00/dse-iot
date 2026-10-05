@@ -1,4 +1,4 @@
-package at.ac.univie.dse.iot.msml;
+package at.ac.univie.dse.iot.testsupport;
 
 import at.ac.univie.dse.iot.common.fogapi.FogMessage;
 import at.ac.univie.dse.iot.common.fogapi.FogMessageCodec;
@@ -19,7 +19,9 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * A scriptable fog node speaking the Fog Aggregate API over real UDP, for tests of MS ML.
+ * A scriptable fog node speaking the Fog Aggregate API over real UDP, for tests of MS ML:
+ * answers SUBSCRIBE/RENEW/UNSUBSCRIBE, sends aggregates to its subscribers, can simulate lost
+ * answers, a restart (new epoch) and late datagrams of an old epoch.
  */
 public final class FakeFogServer implements AutoCloseable {
 

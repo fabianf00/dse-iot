@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import at.ac.univie.dse.iot.clntml.ClientConfig.EndpointConfig;
 import at.ac.univie.dse.iot.mlapi.MlRemoteService;
+import at.ac.univie.dse.iot.testsupport.FakeMlService;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
