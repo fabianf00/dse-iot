@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WEB ML</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="style.css">
+  <script src="vendor/chart.umd.min.js" defer></script>
+  <script type="module" src="app.js"></script>
+</head>
+<body>
+  <header class="top">
+    <h1>WEB ML</h1>
+    <nav class="tabs">
+      <a id="tab-live" href="?view=live" data-nav>Live</a>
+      <a id="tab-history" href="?view=history" data-nav>History</a>
+    </nav>
+    <label class="endpoint">ML instance <select id="endpoint"></select></label>
+    <span id="status" class="badge">connecting…</span>
+  </header>
+
+  <div id="banner" class="banner" role="alert" hidden></div>
+  <div id="message" class="message" role="status" hidden></div>
+
+  <main>
+    <section id="live" hidden>
+      <h2>Current predictions</h2>
+      <div id="cards" class="cards"><p class="muted">No predictions yet.</p></div>
+      <h2>Last hour</h2>
+      <div id="live-charts" class="charts"></div>
+      <h2>Latest anomalies</h2>
+      <ol id="latest-anomalies" class="list"></ol>
+    </section>
+
+    <section id="history" hidden>
+      <form id="filter" class="filter">
+        <label>Kind
+          <select name="kind">
+            <option value="anomalies">Anomalies</option>
+            <option value="predictions">Predictions</option>
+          </select>
+        </label>
+        <fieldset id="data-types">
+          <legend>Data types</legend>
+        </fieldset>
+        <label>Chain
+          <select name="chainId" id="chain"><option value="">any</option></select>
+        </label>
+        <label>From <input type="datetime-local" name="from"></label>
+        <label>To <input type="datetime-local" name="to"></label>
+        <label>Commented
+          <select name="commented">
+            <option value="">any</option>
+            <option value="true">yes</option>
+            <option value="false">no</option>
+          </select>
+        </label>
+        <label>Order
+          <select name="sort">
+            <option value="desc">newest first</option>
+            <option value="asc">oldest first</option>
+          </select>
+        </label>
+        <div class="buttons">
+          <button type="submit">Apply</button>
+          <a href="?view=history" data-nav id="reset-filter">Reset</a>
+        </div>
+      </form>
+      <p id="filter-error" class="error" hidden></p>
+
+      <p id="chart-period" class="muted"></p>
+      <div id="history-charts" class="charts"></div>
+
+      <div class="table-head">
+        <span id="result-count"></span>
+        <button id="delete-matching" type="button" class="danger">Delete all matching</button>
+      </div>
+      <div class="table-wrap">
+        <table id="results">
+          <thead>
+            <tr><th>Time</th><th>Data type</th><th>Summary</th><th>Comments</th><th></th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="pager">
+        <button id="prev" type="button">← Previous</button>
+        <span id="page-info"></span>
+        <button id="next" type="button">Next →</button>
+      </div>
+    </section>
+
+    <aside id="details" class="details" hidden>
+      <div class="details-head">
+        <h2 id="details-title"></h2>
+        <button id="details-close" type="button" aria-label="Close details">✕</button>
+      </div>
+      <dl id="details-fields"></dl>
+      <button id="details-delete" type="button" class="danger">Delete this result</button>
+      <h3>Comments</h3>
+      <ul id="comments" class="comments"></ul>
+      <form id="comment-form" class="comment-form">
+        <label>Comment <textarea name="text" maxlength="2000" rows="3" required></textarea></label>
+        <label>Author (optional) <input name="author" maxlength="100"></label>
+        <button type="submit">Add comment</button>
+        <p id="comment-error" class="error" hidden></p>
+      </form>
+    </aside>
+  </main>
+</body>
+</html>

@@ -1,0 +1,7 @@
+{
+  "serviceId": "web-ml",
+  "bindHost": "0.0.0.0",
+  "port": 50400,
+  "endpoints": [ { "name": "ml-1", "restUrl": "http://127.0.0.1:50303/api/v1" } ],
+  "refreshIntervalMs": 5000
+}
