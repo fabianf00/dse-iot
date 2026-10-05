@@ -1,0 +1,7 @@
+{
+  "pollIntervalMs": 5000,
+  "maxEventsPerPoll": 100,
+  "endpoints": [
+    { "name": "ml-1", "host": "127.0.0.1", "registryPort": 1099, "bindName": "MlService" }
+  ]
+}
