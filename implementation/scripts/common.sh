@@ -83,8 +83,10 @@ start_instance() {
         echo "  no config for $name: $config" >&2
         return 1
     fi
-    mkdir -p "$PID_DIR" "$LOG_DIR"
-    nohup java -jar "$jar" "$config" > "$LOG_DIR/$name.log" 2>&1 &
+    mkdir -p "$PID_DIR" "$LOG_DIR" "$RUN_DIR/data"
+    # Started from implementation/, so relative paths in configs (e.g. the ML database under
+    # run/data) do not depend on the directory the script was called from.
+    (cd "$ROOT" && exec nohup java -jar "$jar" "$config" > "$LOG_DIR/$name.log" 2>&1) &
     echo $! > "$PID_DIR/$name.pid"
     echo "  started $name (pid $!, config ${config#$ROOT/}, log ${LOG_DIR#$ROOT/}/$name.log)"
 }
