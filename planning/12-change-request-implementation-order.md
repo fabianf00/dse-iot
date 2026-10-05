@@ -307,3 +307,40 @@ Done when: same tests, all green, no duplicated helpers left.
     description.
 - e2e run: `scripts/e2e-test.sh --build` → E2E PASSED. The drop was reported 201 s after start,
   and all 11 new REST/WEB checks passed.
+
+**Step 15 – done.**
+
+- `intgrtn_tests/system`:
+  - `TestConfigs` builds the minimum layout on free ports of 127.0.0.1 (one CF scan range for
+    the 2 fogs and 6 devices): constant values, 250 ms publish interval, 1 s fog windows, the
+    short `temp-sudden-drop` chain, ML with an H2 file in a temp directory, REST and RMI.
+  - `RunningSystem` starts everything in the `start-all.sh` order (ML, fogs, devices, WEB ML)
+    and stops it in reverse.
+  - The anomaly is deterministic: only `iot-temp-1` injects (-12 °C for 10 s, probability 0.02).
+    Seed 273 makes the first injection fall on the 76th reading (≈19 s), found with a small
+    Java program against `new Random(seed ^ 0x5DEECE66D)` like `ValueGeneratorFactory`. The
+    fog then averages (23 + 23 + 11) / 3 = 19 °C, and ML indeed reports "observed 19.0".
+  - `FullSystemIT` (IT-E2E):
+    - both fogs aggregate 3 devices (checked with a UDP subscriber);
+    - RMI and REST status agree, and both fogs are ACTIVE;
+    - `MlClient.runOnce` prints the anomaly and predictions of both types;
+    - the anomaly is stored and can be commented over REST;
+    - WEB ML's `config.json` points to this ML;
+    - every service is still RUNNING.
+    About 21 s, passed 7 runs in a row.
+- Test review (11 §4):
+  - New `Waiting.holdsFor(duration, condition)` (Awaitility `during`) for negative checks: it
+    fails as soon as the condition breaks instead of sleeping and checking once. Used in
+    `MlServiceIT` (no new events; exactly one prediction change in steps 5 and 6),
+    `IotDeviceIT` (stays RUNNING while the sink is down) and `CfOverlayIT` (no extra
+    deliveries, no duplicates over a cycle, nothing beyond TTL).
+  - `FogNodeIT` lease expiry: instead of fixed 2.5 s + 2.2 s pauses it waits until the expired
+    subscriber gets no aggregate for two windows, then checks that the active one still
+    receives.
+  - `SensorPublisherTest` uses Awaitility `during`. `AbstractMicroServiceTest` uses Awaitility
+    instead of a hand-written poll loop; `common` got Awaitility as a test dependency.
+  - Remaining `Waiting.pause` calls only pace test data (rounds of aggregates, publish bursts)
+    or wait out ML's resubscription before replaying old-epoch datagrams.
+  - Planned `test_support` tests: `PortsTest` (2), `RestTestClientTest` (3, against a JDK
+    echo server), `WaitingTest` (2).
+- 363 tests in total (328 unit, 35 IT). The integration tests passed 3 times in a row.

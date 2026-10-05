@@ -28,6 +28,9 @@ Java 17+, Maven (via the included wrapper, no installation needed). All commands
 
 Unit tests live in each module (`src/test`). Integration tests live in `intgrtn_tests` and keep the
 package of the code they test, so they can use package-private test hooks.
+`intgrtn_tests/.../system/FullSystemIT` runs the whole layout in one JVM (6 IoT, 2 fogs, ML,
+WEB ML, the client) on free ports in about 20 s: a seeded device injects a temperature drop,
+which arrives over RMI and REST. `scripts/e2e-test.sh` does the same with the real JARs.
 
 ## Run the minimum layout (1 ML, 2 Fog, 6 IoT, WEB ML on 127.0.0.1)
 
