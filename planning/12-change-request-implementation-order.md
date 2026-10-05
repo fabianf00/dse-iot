@@ -176,3 +176,47 @@ Done when: same tests, all green, no duplicated helpers left.
 - Real run (demo layout from the JARs, started from the repository root): `run/data/ml-1.mv.db`
   created under `implementation/`, 2 prediction changes recorded and read back after the
   processes ended.
+
+**Step 12 – done.**
+
+- `msml.results.ResultService` holds the use cases and validation (`InvalidRequestException`).
+  Comment text is trimmed, 1–2000 characters. The author is optional (blank means none) and at most
+  100 characters. A bulk delete without a filter is refused, and every bulk delete gets
+  `recordedBefore` = now (race mitigation, plan 09 §3.4).
+- `msml.rest`:
+  - `RestServer`: Javalin 7 with the Jackson mapper from `JsonCodec`, banner off,
+    `prefer405over404`. CORS comes from `rest.allowedOrigins` and exposes `Location`; an empty
+    list disables CORS.
+  - The `/predictions/current`, `/status` and `/meta` routes are registered before the `{id}`
+    routes.
+  - `ResultsController` (one instance per kind), `CommentsController`, `LiveController`.
+  - `FilterParser`: unknown parameters give 400, `chainId` is rejected on predictions, a bulk
+    delete takes no paging parameters, and a repeated single-value parameter gives 400.
+  - `ResourceMapper`, plus `Resources` (all JSON records, including `ProblemDetails`), and
+    `ApiException` and `Ids` (positive ids only).
+- Errors are RFC 9457 problem details (`application/problem+json`, `type` `about:blank`):
+  - `ApiException` maps to its own status; `InvalidRequestException` gives 400.
+  - `StorageException` gives 503; anything else gives 500 (logged).
+  - Javalin's own 404 and 405 get a problem body too.
+  - A closed `Database` now throws `StorageException` (it used to be Hibernate's
+    `IllegalStateException`, which became 500), so 503 also covers a database that is gone.
+- `MlConfig.rest` is optional: default `0.0.0.0:50303` with the WEB ML origins. `config/ml-1.json`
+  has an explicit `rest` block. `MlService` starts REST last and stops it first. `/status` adds
+  storage counters (stored anomalies/predictions, recorded, failed writes, queued) to the RMI
+  status. `/meta` lists the data types (histograms, seen and chain types) and the chains with
+  their data types.
+- `test_support.RestTestClient` (JDK `HttpClient`). `StorageFixtures` is public for tests in
+  other packages.
+- `intgrtn_tests/msml/MlTestSystem`: ML with two fake fogs, RMI and REST on free ports, and a
+  restart on the same config/database. `MlServiceIT` uses it.
+- Tests:
+  - Unit: `FilterParserTest` (16), `ResultServiceTest` (4), `RestApiTest` (10: real server on
+    port 0, paging, 404/400/415/405, comments, deletes, live endpoints, CORS, 503).
+  - IT: `MlRestApiIT` (4: IT-REST steps 1–9, H2 file in a temp directory) and `MlPersistenceIT`
+    (IT-PERSIST: comment survives restart, empty RMI log with a new epoch, new anomaly stored with
+    the new epoch, no duplicates).
+  - 318 tests in total (289 unit, 29 IT).
+- Real run (`start-all.sh`): `/status`, `/meta`, `/predictions/current` and `/predictions` were
+  served from the running system. The run also showed a 400 problem for `limit=0`, a CORS
+  preflight allowed for `http://127.0.0.1:50400`, and a comment on a stored prediction (201 with
+  `Location`) found with `commented=true`.
