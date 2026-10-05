@@ -1,0 +1,22 @@
+{
+  "serviceId": "fog-co2",
+  "dataType": "co2",
+  "unit": "PPM",
+  "aggregationMode": "MAX",
+  "windowMs": 10000,
+  "udp": {
+    "port": 50202
+  },
+  "cf": {
+    "listenPort": 50122,
+    "scan": {
+      "hosts": [
+        "127.0.0.1"
+      ],
+      "portRange": {
+        "from": 50100,
+        "to": 50129
+      }
+    }
+  }
+}

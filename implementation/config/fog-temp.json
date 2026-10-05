@@ -1,0 +1,22 @@
+{
+  "serviceId": "fog-temp",
+  "dataType": "temperature",
+  "unit": "CELSIUS",
+  "aggregationMode": "AVG",
+  "windowMs": 10000,
+  "udp": {
+    "port": 50201
+  },
+  "cf": {
+    "listenPort": 50121,
+    "scan": {
+      "hosts": [
+        "127.0.0.1"
+      ],
+      "portRange": {
+        "from": 50100,
+        "to": 50129
+      }
+    }
+  }
+}
