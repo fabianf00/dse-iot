@@ -137,3 +137,42 @@ Done when: same tests, all green, no duplicated helpers left.
   The 24 ITs passed three times in a row in one JVM.
 - `intgrtn_tests` has no main code: empty JAR skipped, and the compiler's incremental check is
   off there (it warned about the missing `target/classes`).
+
+**Step 11 – done.**
+
+- Package `msml.storage`: `StorageConfig` (optional `storage` block; default
+  `jdbc:h2:file:./run/data/<serviceId>`, user, password, recorder queue, pool size),
+  `Database` (programmatic `PersistenceConfiguration`, Hibernate schema update,
+  `CamelCaseToUnderscoresNamingStrategy`, UTC, HikariCP pool via `hibernate-hikaricp`),
+  entities `MlResultEntity` (single table, discriminator `kind`, unique
+  `(ml_instance, server_epoch, event_sequence)`), `AnomalyEntity`, `PredictionEntity`,
+  `CommentEntity`, `PhaseObservationEmbeddable`, `ResultRepository` + `JpaResultRepository`,
+  `ResultFilter` (incl. `recordedBefore` for the bulk-delete race), `PageRequest`, `Page`,
+  `ResultRecorder`.
+- Deviations from 09:
+  - No separate `Transactions` class: `Database.inTransaction(Function)` and
+    `Database.runInTransaction(Consumer)` (two overloads with the same name were ambiguous for
+    block lambdas).
+  - The repository returns immutable records (`StoredResult.StoredAnomaly/StoredPrediction`,
+    `StoredComment`, `StoredPhase`) built inside the transaction. Entities never leave the
+    storage package, so no lazy-loading errors outside a transaction. Lists load one page of
+    results, then the comments of that page in one more Criteria query.
+  - Bulk delete selects the matching ids (Criteria), then deletes comments and results by id in
+    chunks of 500 with `CriteriaDelete` (Criteria deletes cannot use `treat` for `chainId`).
+  - Column names avoid SQL keywords: `comment_text`, embedded phase columns `past_condition`,
+    `past_start`, `past_end`, `past_samples` (and `current_…`).
+- `EventLog.addListener`: listeners are called after the append, outside the lock; a failing
+  listener is logged and does not affect others. `MlService` opens the database, registers and
+  starts the recorder before the workers, and stops recorder (drains its queue) and database
+  last.
+- Done early from step 14: `start_instance` starts every process with `implementation/` as working
+  directory (relative DB paths no longer depend on where the script is called from) and creates
+  `run/data/`.
+- Tests: `JpaResultRepositoryTest` (13: all fields, idempotency, every filter, paging/sort,
+  comments, cascade, bulk delete, file DB reopen, clear error for an unusable DB),
+  `ResultRecorderTest` (5), `NoExplicitSqlTest` (2: scans `src/main/java` for SQL/JPQL strings,
+  native and named queries, JDBC statements), 3 new `EventLogTest`, 3 new `MlConfigTest`.
+  `MlServiceIT` uses an in-memory DB. 281 tests in total (257 unit, 24 IT).
+- Real run (demo layout from the JARs, started from the repository root): `run/data/ml-1.mv.db`
+  created under `implementation/`, 2 prediction changes recorded and read back after the
+  processes ended.
