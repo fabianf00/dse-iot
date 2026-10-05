@@ -29,20 +29,25 @@ Java 17+, Maven (via the included wrapper, no installation needed). All commands
 Unit tests live in each module (`src/test`). Integration tests live in `intgrtn_tests` and keep the
 package of the code they test, so they can use package-private test hooks.
 
-## Run the minimum layout (1 ML, 2 Fog, 6 IoT on 127.0.0.1)
+## Run the minimum layout (1 ML, 2 Fog, 6 IoT, WEB ML on 127.0.0.1)
 
 ```
-scripts/start-all.sh [--demo] [--build]   # start all 9 instances in the background
+scripts/start-all.sh [--demo] [--build]   # start all 10 instances in the background
 scripts/client.sh                          # print anomalies and prediction changes (Ctrl+C to stop)
 scripts/client.sh --once                   # print what is new and exit
 scripts/client.sh --status                 # ML state and its fog subscriptions
-scripts/status.sh                          # which instances are running
+scripts/status.sh                          # which instances are running, REST/WEB URLs, ML status
 scripts/stop-all.sh                        # stop everything (graceful, SIGKILL after 10 s)
 scripts/start-service.sh <instance>        # start / restart one instance, e.g. ml-1
 scripts/stop-service.sh <instance>         # stop one instance
+scripts/reset-data.sh [--yes]              # delete the stored ML results (ML must be stopped)
 ```
 
+Then open the web UI at http://127.0.0.1:50400/.
+
 - Logs: `run/logs/<instance>.log`, PIDs: `run/pids/<instance>.pid` (both generated, safe to delete).
+- ML stores anomalies, predictions and comments in an H2 file database, `run/data/ml-1.mv.db`.
+  It survives restarts; `scripts/reset-data.sh` deletes it.
 - `--demo` uses `config/demo/<instance>.json` where it exists: two devices inject anomalies about
   3 minutes after start instead of rarely (seeded, so it is reproducible).
 - Single instance by hand: `java -jar ms_iot/target/ms_iot.jar config/iot-temp-1.json`.
@@ -58,7 +63,33 @@ scripts/stop-service.sh <instance>         # stop one instance
 
 CF peers find each other by scanning `127.0.0.1:50100–50129`.
 
+## ML REST API
+
+Base URL `http://127.0.0.1:50303/api/v1` (full description: `planning/09-ms-ml-storage-and-rest.md`).
+Errors are answered with problem details (`application/problem+json`).
+
+```
+B=http://127.0.0.1:50303/api/v1
+curl "$B/status"                                         # RMI status plus storage counters
+curl "$B/meta"                                           # data types and behaviour chains
+curl "$B/predictions/current"                            # live predictions (not stored)
+curl "$B/anomalies?dataType=temperature&limit=10"        # newest first, paged
+curl "$B/predictions?from=2026-10-05T12:00:00Z&sort=occurredAt,asc"
+curl "$B/anomalies?commented=true&chainId=temp-sudden-drop"
+curl "$B/anomalies/12"
+curl -X POST -H 'Content-Type: application/json' -d '{"text":"window open","author":"me"}' "$B/anomalies/12/comments"
+curl -X PUT  -H 'Content-Type: application/json' -d '{"text":"window was open"}' "$B/comments/3"
+curl -X DELETE "$B/comments/3"
+curl -X DELETE "$B/anomalies/12"
+curl -X DELETE "$B/predictions?dataType=co2&to=2026-10-05T12:00:00Z"   # bulk delete needs a filter
+```
+
+Filters: `dataType` (repeatable), `chainId` (anomalies), `from`, `to` (ISO-8601 instants),
+`commented=true|false`. Paging: `limit` (1–500, default 50), `offset`, `sort=occurredAt,desc|asc`.
+
 ## WEB ML
+
+Started by `start-all.sh`, or by hand:
 
 ```
 java -jar web_ml/target/web_ml.jar config/web-ml.json    # then open http://127.0.0.1:50400/
@@ -93,7 +124,10 @@ scripts/e2e-test.sh [--build]    # about 4–5 minutes, prints PASS/FAIL per che
 
 Starts the demo layout, checks that the fogs aggregate 3 devices each and ML is subscribed,
 runs the client with `--once` until the injected temperature drop is reported (no event printed
-twice), kills ML under a polling client, restarts it, and checks that nothing is left running.
+twice). Then it checks with curl that the anomaly is stored, makes a comment round trip
+(add, edit, delete), checks the live endpoints, problem details, CORS and that WEB ML serves
+the UI and its `config.json`. Finally it kills ML under a polling client, restarts it, checks
+that the stored anomaly is still served, and that nothing is left running. Needs `curl`.
 
 ## UML
 

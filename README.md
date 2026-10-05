@@ -6,7 +6,9 @@ A distributed system of Java microservices that simulates an IoT cloud:
   Framework** (plain TCP, peer discovery by scanning, flooding with TTL and duplicate detection).
 - **Fog nodes** aggregate the readings per time window and push the aggregates over UDP.
 - **MS ML** detects anomalies with behaviour chains and predicts values with histograms. It
-  serves the results to a command line client over Java RMI.
+  serves the results to a command line client over Java RMI, stores them (JPA/Hibernate, H2)
+  and offers a REST API to load, filter, delete and comment them.
+- **WEB ML** is a web UI with charts of current and historic results, built on the REST API.
 
 ## Source
 
@@ -32,8 +34,9 @@ Requires Java 17 or newer (Maven comes with the wrapper).
 ```
 cd implementation
 ./mvnw clean verify               # build and run all tests
-scripts/start-all.sh --demo       # start 1 ML, 2 fog and 6 IoT instances
-scripts/client.sh                 # watch anomalies and prediction changes (Ctrl+C to stop)
+scripts/start-all.sh --demo       # start 1 ML, 2 fog, 6 IoT instances and the web UI
+open http://127.0.0.1:50400/      # web UI (anomalies about 3 min after start in demo mode)
+scripts/client.sh                 # or watch the events in the terminal (Ctrl+C to stop)
 scripts/stop-all.sh
 ```
 
