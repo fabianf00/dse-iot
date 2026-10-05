@@ -91,9 +91,9 @@ class CfOverlayIT {
         for (PeerNode node : overlay.subList(1, overlay.size())) {
             waiting().until(() -> receivedBy(node).size() == 100);
         }
-        Waiting.pause(Duration.ofMillis(300));
+        Waiting.holdsFor(Duration.ofMillis(300), () -> overlay.subList(1, overlay.size()).stream()
+                .allMatch(node -> receivedBy(node).size() == 100));
         for (PeerNode node : overlay.subList(1, overlay.size())) {
-            assertEquals(100, receivedBy(node).size());
             assertTrue(receivedBy(node).values().stream().allMatch(count -> count.get() == 1),
                     node.nodeId() + " received a message more than once");
         }
@@ -113,9 +113,8 @@ class CfOverlayIT {
         waiting().until(() -> receivedBy(triangle.get(1)).size() == 1
                 && receivedBy(triangle.get(2)).size() == 1);
         waiting().until(() -> triangle.get(1).duplicatesDropped() + triangle.get(2).duplicatesDropped() >= 1);
-        Waiting.pause(Duration.ofMillis(200));
-        assertEquals(1, receivedBy(triangle.get(1)).values().iterator().next().get());
-        assertEquals(1, receivedBy(triangle.get(2)).values().iterator().next().get());
+        Waiting.holdsFor(Duration.ofMillis(200), () -> receivedBy(triangle.get(1)).values().iterator().next().get() == 1
+                && receivedBy(triangle.get(2)).values().iterator().next().get() == 1);
     }
 
     @Test
@@ -131,8 +130,8 @@ class CfOverlayIT {
         waiting().until(() -> receivedBy(line.get(3)).size() == 1);
         assertEquals(1, receivedBy(line.get(1)).size());
         assertEquals(1, receivedBy(line.get(2)).size());
-        Waiting.pause(Duration.ofMillis(300));
-        assertTrue(receivedBy(line.get(4)).isEmpty(), "the fourth hop is beyond TTL 3");
+        // The fourth hop is beyond TTL 3.
+        Waiting.holdsFor(Duration.ofMillis(300), () -> receivedBy(line.get(4)).isEmpty());
     }
 
     @Test

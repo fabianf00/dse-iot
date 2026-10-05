@@ -84,18 +84,18 @@ class MlServiceIT {
         cursor = anomalies.nextCursor();
 
         // 4. Nothing new happened: an empty page with the same cursor.
-        Waiting.pause(Duration.ofMillis(1_000));
-        PollResult nothing = client.pollEvents(cursor, 100);
-        assertTrue(nothing.events().isEmpty(), nothing.events().toString());
-        assertEquals(cursor, nothing.nextCursor());
+        long quietCursor = cursor;
+        Waiting.holdsFor(Duration.ofMillis(1_000), () -> client.pollEvents(quietCursor, 100).events().isEmpty());
+        assertEquals(cursor, client.pollEvents(cursor, 100).nextCursor());
 
         // 5. CO2 shifts from 600 to 800: exactly one prediction change, not one per value.
         for (int i = 0; i < 20; i++) {
             co2Fog.sendAggregate(800.0);
             Waiting.pause(Duration.ofMillis(ROUND_MS / 2));
         }
-        waiting().until(() -> client.getStatus().queueSize() == 0);
-        Waiting.pause(Duration.ofMillis(300));
+        long shiftCursor = cursor;
+        waiting().until(() -> client.getStatus().queueSize() == 0 && !co2Changes(shiftCursor).isEmpty());
+        Waiting.holdsFor(Duration.ofMillis(300), () -> co2Changes(shiftCursor).size() == 1);
         List<PredictionChangeDto> co2Changes = co2Changes(cursor);
         assertEquals(1, co2Changes.size(), co2Changes.toString());
         assertEquals(600.0, co2Changes.get(0).previous().binLower());
@@ -115,8 +115,9 @@ class MlServiceIT {
             co2Fog.sendAggregate(960.0);
             Waiting.pause(Duration.ofMillis(ROUND_MS / 2));
         }
-        waiting().until(() -> client.getStatus().queueSize() == 0);
-        Waiting.pause(Duration.ofMillis(300));
+        long restartCursor = cursor;
+        waiting().until(() -> client.getStatus().queueSize() == 0 && !co2Changes(restartCursor).isEmpty());
+        Waiting.holdsFor(Duration.ofMillis(300), () -> co2Changes(restartCursor).size() == 1);
         List<PredictionChangeDto> afterRestart = co2Changes(cursor);
         assertEquals(1, afterRestart.size(), afterRestart.toString());
         assertEquals(950.0, afterRestart.get(0).current().binLower(), "old-epoch values (5000) were ignored");

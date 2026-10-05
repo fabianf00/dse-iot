@@ -69,8 +69,7 @@ class IotDeviceIT {
         // 4. The sink goes away and comes back on the same port; the device keeps running and reconnects.
         sink.close();
         long lastSequenceBeforeRestart = lastSequence(sink.readingsOf("iot-test-1"));
-        Waiting.pause(Duration.ofMillis(500));
-        assertEquals(AbstractMicroService.State.RUNNING, temperature.state());
+        Waiting.holdsFor(Duration.ofMillis(500), () -> temperature.state() == AbstractMicroService.State.RUNNING);
 
         CfTestPeer restarted = startSink(basePort);
         waiting().until(() -> restarted.isConnectedTo("iot-test-1") || restarted.isConnectedTo("iot-test-2"));

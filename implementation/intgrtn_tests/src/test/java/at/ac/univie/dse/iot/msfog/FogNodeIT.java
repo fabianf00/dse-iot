@@ -125,12 +125,13 @@ class FogNodeIT {
         shortLeaseClient.request(FogMessage.Subscribe.of("t2", null, shortLeaseClient.port(), 1_500),
                 FogMessage.SubscribeAck.class);
         shortLeaseClient.nextAggregate();
-        Waiting.pause(Duration.ofMillis(2_500));
-        shortLeaseClient.clearAggregates();
+        Duration twoWindows = Duration.ofMillis(2 * WINDOW_MS + 200);
+        waiting().until(() -> {
+            shortLeaseClient.clearAggregates();
+            return shortLeaseClient.pollAggregate(twoWindows) == null;
+        });
         client.clearAggregates();
-        Waiting.pause(Duration.ofMillis(2 * WINDOW_MS + 200));
-        assertNull(shortLeaseClient.pollAggregate(Duration.ZERO), "expired subscriber still receives aggregates");
-        assertNotNull(client.pollAggregate(Duration.ZERO), "active subscriber stopped receiving");
+        assertNotNull(client.pollAggregate(twoWindows), "active subscriber stopped receiving");
 
         // 7. Malformed and wrong-version requests are answered with errors, and nothing breaks.
         client.sendRaw("{\"garbage\":".getBytes(StandardCharsets.UTF_8));

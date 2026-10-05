@@ -113,15 +113,15 @@ class SensorPublisherTest {
     }
 
     @Test
-    void stopEndsPublishing() throws InterruptedException {
+    void stopEndsPublishing() {
         SensorPublisher publisher = publisher(this::nextReading, Duration.ofMillis(10));
         publisher.start();
         await().atMost(Duration.ofSeconds(5)).until(() -> cf.published.size() >= 2);
 
         publisher.stop();
         int afterStop = cf.published.size();
-        Thread.sleep(100);
 
-        assertEquals(afterStop, cf.published.size());
+        await().during(Duration.ofMillis(100)).atMost(Duration.ofSeconds(1))
+                .until(() -> cf.published.size() == afterStop);
     }
 }

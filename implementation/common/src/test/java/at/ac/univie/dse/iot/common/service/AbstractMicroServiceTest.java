@@ -1,5 +1,6 @@
 package at.ac.univie.dse.iot.common.service;
 
+import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -192,14 +193,8 @@ class AbstractMicroServiceTest {
         assertTrue(service.calls.isEmpty());
     }
 
-    private static void waitForState(RecordingService service, AbstractMicroService.State expected)
-            throws InterruptedException {
-        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
-        while (service.state() != expected) {
-            if (System.nanoTime() > deadline) {
-                throw new AssertionError("service did not reach " + expected + ", state is " + service.state());
-            }
-            Thread.sleep(10);
-        }
+    private static void waitForState(RecordingService service, AbstractMicroService.State expected) {
+        await().atMost(Duration.ofSeconds(5)).pollInterval(Duration.ofMillis(10))
+                .untilAsserted(() -> assertEquals(expected, service.state()));
     }
 }
