@@ -344,3 +344,30 @@ Done when: same tests, all green, no duplicated helpers left.
   - Planned `test_support` tests: `PortsTest` (2), `RestTestClientTest` (3, against a JDK
     echo server), `WaitingTest` (2).
 - 363 tests in total (328 unit, 35 IT). The integration tests passed 3 times in a row.
+
+**Step 16 – done.**
+
+- New `uml/ms_ml_results.puml` for the packages `storage`, `results` and `rest`:
+  - entities (single-table inheritance, embedded phases, comments), the repository and its
+    JPA implementation, the recorder as event-log listener;
+  - `ResultService`;
+  - `RestServer` with its controllers, parser, mapper and resources.
+  It is a separate diagram because `ms_ml.puml` is already very wide. `ms_ml.puml` links to
+  it: `MlConfig.storage/rest`, `MlService` (`restStatus()`, `meta()`, `restPort()`,
+  composition of Database, ResultRecorder, ResultService, RestServer), `EventLog.addListener`.
+- New `uml/web_ml.puml`: the Java classes, plus the browser files as artifacts
+  (`allowmixing`), the browser and the ML REST API as nodes, and the CSP/URL-state rules as
+  notes. No `intgrtn_tests` diagram (optional in the plan, left out).
+- `check-uml.sh`: a module's types may be spread over several diagrams (`ms_ml` → `ms_ml.puml`
+  + `ms_ml_results.puml`); `web_ml` is checked too. Verified that a bogus type and a bogus
+  operation in a diagram are reported.
+- `render-uml.sh` sets `PLANTUML_LIMIT_SIZE=8192`. PlantUML crops at 4096 px by default, which
+  had cut off `common.png` (5460 px wide) and `ms_ml.png` (7283 px) since the first steps;
+  all PNGs are now complete.
+- Final system run (`start-all.sh --demo`, headless Chrome on `http://127.0.0.1:50400/`):
+  - the injected temperature drop was stored at 15:25:08 and shown as a red cross in the live
+    temperature chart and in "Latest anomalies";
+  - opened from that list, commented (comment count 1 in the table), then deleted in the
+    details panel ("Deleted anomaly #62.", the panel closes, the table shows the rest);
+  - no JavaScript errors.
+- The plan of the change request (steps 9–16) is complete.

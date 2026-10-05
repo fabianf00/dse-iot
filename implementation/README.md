@@ -134,7 +134,9 @@ that the stored anomaly is still served, and that nothing is left running. Needs
 
 ## UML
 
-`uml/*.puml` (one diagram per artifact) and rendered `uml/*.png`.
+`uml/*.puml` (one diagram per artifact) and rendered `uml/*.png`. MS ML has two diagrams:
+`ms_ml.puml` (detection, prediction, jobs, RMI) and `ms_ml_results.puml` (storage, result
+use cases, REST API). `web_ml.puml` also shows the browser files and who calls whom.
 
 ```
 scripts/check-uml.sh             # diagrams vs. code: types in both directions, operation names
