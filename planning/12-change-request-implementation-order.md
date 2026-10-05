@@ -220,3 +220,60 @@ Done when: same tests, all green, no duplicated helpers left.
   served from the running system. The run also showed a 400 problem for `limit=0`, a CORS
   preflight allowed for `http://127.0.0.1:50400`, and a comment on a stored prediction (201 with
   `Location`) found with `commented=true`.
+
+**Step 13 – done.**
+
+- `web_ml`:
+  - `WebMlConfig`: `bindHost` defaults to `0.0.0.0` and `refreshIntervalMs` to 5000 (allowed range
+    1 s–1 h). Endpoint names must be unique, and `restUrl` must be an absolute http(s) URL; a
+    trailing slash is removed.
+  - `StaticFiles` serves classpath `web/`. A path is only served if every segment is a plain name
+    (no `..`, no hidden files, no empty segments) and the file type is known (html, js, css, svg,
+    png, ico, md). Directories and anything else are 404.
+  - `WebMlService` uses the JDK `HttpServer` with 4 threads and answers GET and HEAD only
+    (anything else is 405 with `Allow`). `/config.json` is generated from the config.
+  - Every response sets `Cache-Control: no-cache`, `nosniff`, `Referrer-Policy: no-referrer` and
+    a Content-Security-Policy: scripts and styles only from this server, `connect-src` only to the
+    configured ML origins, no framing.
+- UI (`index.html`, `style.css`, `app.js`, `favicon.svg`; Chart.js 4.5.1 vendored with its MIT
+  license in `vendor/`):
+  - Light and dark mode.
+  - The x axis is linear in milliseconds, so no date adapter is needed.
+  - Charts show the most likely value as a stepped line with the bin as a filled band, and
+    anomalies as red crosses with a tooltip (chain, expected, observed). The line starts at the
+    last prediction before the period and runs to the end of the period.
+  - Live view refreshes every `refreshIntervalMs`: cards, charts of the last hour, the latest 10
+    anomalies (linked to their details).
+  - History: filter form, paged table (25 rows), charts of the filter period (last 24 h if no
+    "From"), details panel with all fields, comments (add/edit/delete), delete one, delete all
+    matching (disabled without a filter, shows the total and asks first).
+  - The state is in the URL only (view, endpoint, kind, filter, sort, offset, id) via
+    `pushState`/`popstate`, so reload and bookmarks keep it.
+  - Elements are built with an `el()` helper that sets text via `textContent`; no `innerHTML`
+    anywhere.
+  - ML unreachable or 503: a banner with a countdown to the next retry; the last data stays on
+    screen. After recovery the current view reloads.
+  - 404 on details or comments shows "was deleted" and reloads; a 400 shows the problem detail
+    next to the filter form.
+- `MlTestSystem` (intgrtn_tests) is public and has `restPort()`, so ITs in other packages can use
+  it.
+- Tests:
+  - Unit: `StaticFilesTest` (24: content types, traversal, hidden files, directories, unknown
+    types), `WebMlConfigTest` (4, including the shipped `config/web-ml.json`), `WebMlServiceTest`
+    (4: `config.json`, security headers, HEAD, 404/405 including `%2e%2e`).
+  - IT: `WebMlIT` (5: IT-WEB 1–5). Step 4 also checks the browser's CORS preflight for a JSON
+    POST. Step 5 guards the UI sources: no browser storage, cookies, `innerHTML`/`outerHTML`/
+    `insertAdjacentHTML`, `document.write` or `eval`; no inline scripts, handlers or styles in
+    `index.html`.
+  - 355 tests in total (321 unit, 34 IT).
+- Manual check (demo layout + `web_ml.jar`, driven in headless Chrome with Playwright from the
+  scratchpad, not part of the build) covered:
+  - live cards and charts;
+  - a history filter that is reflected in the URL and kept on reload;
+  - details, and a comment with `<script>` rendered as text, then edited and deleted;
+  - a bad period showing a 400 next to the form;
+  - stopping ML: banner with countdown, the last data stays; starting ML: the page recovers on
+    its own.
+  No JavaScript errors. The manual check list is in `implementation/README.md`.
+- Left for step 14: start/stop/status of web_ml in the scripts and e2e checks of the REST API and
+  the UI.
