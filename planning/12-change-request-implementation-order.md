@@ -277,3 +277,33 @@ Done when: same tests, all green, no duplicated helpers left.
   No JavaScript errors. The manual check list is in `implementation/README.md`.
 - Left for step 14: start/stop/status of web_ml in the scripts and e2e checks of the REST API and
   the UI.
+
+**Step 14 – done.**
+
+- `common.sh`: new instance `web-ml` (`web_ml.jar`, `config/web-ml.json`). `ALL_INSTANCES` now
+  has 10 entries. Also added `REST_URL`, `WEB_URL`, `DATA_DIR` and a `probe` helper (curl,
+  2 s). `require_jars` also checks `web_ml.jar`.
+- `start-all.sh` starts WEB ML last and prints the WEB and REST URLs. `stop-all.sh` stops it
+  first.
+- `status.sh` also shows the REST API and WEB ML URLs (reachable or not) and the size of
+  `run/data/`.
+- New `reset-data.sh [--yes]`:
+  - Lists and deletes the H2 files in `run/data/` after asking.
+  - Refuses while ML runs (H2 holds a file lock, and ML would recreate the files).
+- `e2e-test.sh` has a new step 4 (REST and WEB, with curl):
+  - this run's anomaly is stored (filter `from` = test start, so older data in `run/data/`
+    does not count);
+  - comment round trip: POST 201 with `Location`, GET, PUT 200, DELETE 204, list empty;
+  - `/predictions/current` has both data types;
+  - `limit=0` gives a 400 with `application/problem+json`;
+  - the CORS preflight from the WEB ML origin is allowed;
+  - WEB ML serves `/`, and its `/config.json` points to the REST URL.
+  The old steps 4 and 5 became 5 and 6; step 6 also checks that the stored anomaly is still
+  served after the ML restart.
+- READMEs:
+  - Root: WEB ML and REST in the overview, the web UI in the quick start.
+  - Implementation: 10 instances, the REST and WEB ports, `reset-data.sh`, an "ML REST API"
+    section with curl examples and the filter/paging parameters, and the updated e2e
+    description.
+- e2e run: `scripts/e2e-test.sh --build` → E2E PASSED. The drop was reported 201 s after start,
+  and all 11 new REST/WEB checks passed.
