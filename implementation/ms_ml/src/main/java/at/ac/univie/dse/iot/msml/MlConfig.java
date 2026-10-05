@@ -8,6 +8,7 @@ import at.ac.univie.dse.iot.msml.ingest.FogClientConfig;
 import at.ac.univie.dse.iot.msml.ingest.FogEndpoint;
 import at.ac.univie.dse.iot.msml.jobs.WorkerConfig;
 import at.ac.univie.dse.iot.msml.prediction.PredictionConfig;
+import at.ac.univie.dse.iot.msml.rest.RestConfig;
 import at.ac.univie.dse.iot.msml.rmi.RmiConfig;
 import at.ac.univie.dse.iot.msml.storage.StorageConfig;
 import java.util.List;
@@ -27,6 +28,7 @@ import java.util.List;
  * @param rmi                        RMI endpoint, optional
  * @param storage                    database of the historic results, optional; by default an H2
  *                                   file under {@code run/data/<serviceId>}
+ * @param rest                       REST API, optional; by default port 50303 for the WEB ML origins
  */
 public record MlConfig(
         String serviceId,
@@ -38,7 +40,8 @@ public record MlConfig(
         PredictionConfig prediction,
         EventsConfig events,
         RmiConfig rmi,
-        StorageConfig storage) implements ServiceConfig {
+        StorageConfig storage,
+        RestConfig rest) implements ServiceConfig {
 
     public static final long DEFAULT_TIME_SERIES_RETENTION_SECONDS = 3_600;
 
@@ -50,6 +53,7 @@ public record MlConfig(
         events = events == null ? new EventsConfig(0) : events;
         rmi = rmi == null ? new RmiConfig(null, 0, 0, null) : rmi;
         storage = storage == null ? StorageConfig.defaultFor(serviceId) : storage.withDefaultUrl(serviceId);
+        rest = rest == null ? RestConfig.defaults() : rest;
     }
 
     @Override
@@ -67,7 +71,8 @@ public record MlConfig(
                 .nested("prediction", prediction)
                 .nested("events", events)
                 .nested("rmi", rmi)
-                .nested("storage", storage);
+                .nested("storage", storage)
+                .nested("rest", rest);
         if (anomaly != null && anomaly.chains() != null && !validator.hasProblems()) {
             validator.check(timeSeriesRetentionSeconds >= anomaly.maxSpanSeconds(), "timeSeriesRetentionSeconds",
                     "must cover the longest behaviour chain (" + anomaly.maxSpanSeconds() + " s)");

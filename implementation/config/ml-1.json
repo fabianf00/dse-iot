@@ -41,5 +41,6 @@
   },
   "events": { "retention": 10000 },
   "rmi": { "hostname": "127.0.0.1", "registryPort": 1099, "objectPort": 50302, "bindName": "MlService" },
-  "storage": { "jdbcUrl": "jdbc:h2:file:./run/data/ml-1" }
+  "storage": { "jdbcUrl": "jdbc:h2:file:./run/data/ml-1" },
+  "rest": { "host": "0.0.0.0", "port": 50303, "allowedOrigins": ["http://127.0.0.1:50400", "http://localhost:50400"] }
 }

@@ -60,6 +60,7 @@ public final class Database implements AutoCloseable {
 
     /** Runs {@code work} in a transaction and returns its result; rolls back on an exception. */
     public <T> T inTransaction(Function<EntityManager, T> work) {
+        requireOpen();
         try {
             return factory.callInTransaction(work);
         } catch (PersistenceException e) {
@@ -69,10 +70,17 @@ public final class Database implements AutoCloseable {
 
     /** Runs {@code work} in a transaction; rolls back on an exception. */
     public void runInTransaction(Consumer<EntityManager> work) {
+        requireOpen();
         try {
             factory.runInTransaction(work);
         } catch (PersistenceException e) {
             throw new StorageException("Database operation failed: " + rootMessage(e), e);
+        }
+    }
+
+    private void requireOpen() {
+        if (!factory.isOpen()) {
+            throw new StorageException("Database " + jdbcUrl + " is closed", null);
         }
     }
 
